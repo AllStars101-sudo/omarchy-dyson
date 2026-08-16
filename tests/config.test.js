@@ -10,7 +10,7 @@ describe("config parsing", () => {
       assert.equal(c.baseUrl, "")
       assert.equal(c.barMetric, "Fan speed")
       assert.equal(c.historyHours, 24)
-      assert.equal(c.pollSeconds, 30)
+      assert.equal(c.pollSeconds, 10)
       assert.equal(c.staleSeconds, 300)
       assert.equal(c.autoReconnect, true)
       assert.equal(c.error, "")
@@ -63,7 +63,7 @@ describe("config parsing", () => {
 
   test("non-numeric numbers fall back to the default", () => {
     assert.equal(Config.parse('{"historyHours":"lots"}').historyHours, 24)
-    assert.equal(Config.parse('{"pollSeconds":null}').pollSeconds, 30)
+    assert.equal(Config.parse('{"pollSeconds":null}').pollSeconds, 10)
   })
 
   test("a non-string baseUrl is ignored", () => {
@@ -84,7 +84,7 @@ describe("config merge and serialize", () => {
     const next = Config.merge(base, { barMetric: "None", nonsense: true })
     assert.equal(next.barMetric, "None")
     assert.equal(next.nonsense, undefined, "unknown keys are not stored")
-    assert.equal(next.pollSeconds, 30, "untouched keys survive")
+    assert.equal(next.pollSeconds, 10, "untouched keys survive")
   })
 
   test("merge tolerates missing arguments", () => {

@@ -11,7 +11,7 @@ var DEFAULTS = {
   baseUrl: "",
   barMetric: "Fan speed",
   historyHours: 24,
-  pollSeconds: 30,
+  pollSeconds: 10,
   staleSeconds: 300,
   autoReconnect: true
 }
