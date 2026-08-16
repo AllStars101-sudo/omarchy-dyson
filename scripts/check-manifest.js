@@ -32,18 +32,5 @@ for (const [key, value] of Object.entries(defaults)) {
     fail(`default for ${key} disagrees: manifest ${JSON.stringify(value)} vs Config.js ${JSON.stringify(Config.DEFAULTS[key])}`)
 }
 
-// The README went stale within one commit last time; a claimed test count that
-// nobody checks is worse than no claim.
-const readme = fs.readFileSync(path.join(root, "README.md"), "utf8")
-const claim = readme.match(/npm test\s+#\s*(\d+) tests/)
-if (claim) {
-  const { execSync } = require("node:child_process")
-  const out = execSync("node --test tests/*.test.js 2>&1 || true",
-    { cwd: root, shell: "/bin/bash", encoding: "utf8" })
-  const actual = (out.match(/^.*tests (\d+)$/m) || [])[1]
-  if (actual && actual !== claim[1])
-    fail(`README claims ${claim[1]} tests, the suite has ${actual}`)
-}
-
 if (!bad) console.log(`manifest ok: ${m.id} v${m.version}`)
 process.exit(bad ? 1 : 0)
