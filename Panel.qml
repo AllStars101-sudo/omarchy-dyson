@@ -1,0 +1,773 @@
+import QtQuick
+import QtQuick.Controls
+import Quickshell
+import Quickshell.Io
+import qs.Ui
+import qs.Commons
+import "Dyson.js" as Dyson
+
+// Bar button plus dropdown panel for one Dyson air treatment device.
+//
+// Home Assistant owns the Dyson MQTT session (via the hass-dyson integration);
+// this widget only reads /api/states and posts to /api/services through the
+// shared Service. That keeps it honest when the device is changed from the
+// MyDyson app, a physical remote, or an HA automation — it never holds a second
+// opinion about what the device is doing.
+Panel {
+  id: root
+  moduleName: "io.github.allstars101-sudo.dyson-air"
+  ipcTarget: "dyson-air"
+
+  readonly property var service: bar && bar.shell ? bar.shell.serviceFor(root.moduleName) : null
+  readonly property var states: service ? service.states : []
+  readonly property var config: service ? service.config : ({})
+
+  // Which device this particular widget shows. Stored inline on this bar entry
+  // rather than in config.json, because two widgets of this plugin share a
+  // module name and only their placement tells them apart — and the settings
+  // overlay is the surface that knows placements.
+  readonly property string pinnedFan: String(setting("fanEntity", ""))
+  property string overrideFan: ""   // in-panel switcher, this session only
+
+  readonly property string barMetric: String(setting("barMetric", config.barMetric || "Fan speed"))
+  readonly property int historyHours: Math.max(1, Number(setting("historyHours", config.historyHours || 24)))
+  readonly property int staleSeconds: Math.max(60, Number(setting("staleSeconds", config.staleSeconds || 300)))
+  readonly property bool autoReconnect: setting("autoReconnect", config.autoReconnect !== false)
+
+  // --- resolved device ----------------------------------------------------
+
+  readonly property var fans: states.length ? Dyson.listFans(states) : []
+  readonly property string fanEntity: {
+    if (overrideFan) return overrideFan
+    if (pinnedFan) return pinnedFan
+    return Dyson.resolveFan(states, "")
+  }
+  readonly property var caps: fanEntity && states.length
+    ? Dyson.discover(states, fanEntity) : ({})
+
+  function stateOf(entityId) {
+    if (!entityId) return null
+    for (var i = 0; i < states.length; i++)
+      if (states[i].entity_id === entityId) return states[i]
+    return null
+  }
+
+  function attrsOf(entityId) {
+    var s = stateOf(entityId)
+    return s ? (s.attributes || {}) : ({})
+  }
+
+  function numberOf(entityId, decimals) {
+    var s = stateOf(entityId)
+    if (!s) return ""
+    var v = Number(s.state)
+    if (!isFinite(v)) return ""
+    return decimals ? v.toFixed(decimals) : String(Math.round(v))
+  }
+
+  readonly property var fanAttrs: attrsOf(fanEntity)
+  readonly property bool fanOn: (stateOf(fanEntity) || {}).state === "on"
+  readonly property int maxSpeed: Dyson.stepsFor(fanAttrs)
+  readonly property int speed: Dyson.speedFromPercentage(fanAttrs.percentage, fanAttrs)
+  readonly property bool oscillating: !!fanAttrs.oscillating
+  readonly property string rawName: fanAttrs.friendly_name || "Dyson"
+  readonly property string serial: Dyson.serialFromName(rawName)
+
+  readonly property bool autoSupported: caps.autoSwitch !== "" || Dyson.hasPreset(fanAttrs, "auto")
+  readonly property bool autoMode: caps.autoSwitch
+    ? (stateOf(caps.autoSwitch) || {}).state === "on"
+    : Dyson.isAutoMode(fanAttrs)
+  readonly property bool nightMode: fanAttrs.night_mode !== undefined
+    ? !!fanAttrs.night_mode
+    : (stateOf(caps.nightSwitch) || {}).state === "on"
+
+  // Climate
+  readonly property var climateAttrs: attrsOf(caps.climate)
+  readonly property var hvacModes: climateAttrs.hvac_modes || []
+  readonly property bool hasClimate: caps.climate !== "" && hvacModes.length > 0
+  readonly property string hvacMode: (stateOf(caps.climate) || {}).state || "off"
+  readonly property bool heating: hvacMode === "heat"
+  readonly property real targetTemp: Number(climateAttrs.temperature)
+  readonly property real minTemp: Number(climateAttrs.min_temp || 1)
+  readonly property real maxTemp: Number(climateAttrs.max_temp || 37)
+  readonly property real currentTemp: {
+    // The fan entity reports -273.15 when it has no reading, so the climate
+    // entity and then the standalone sensor are preferred in that order.
+    var c = Number(climateAttrs.current_temperature)
+    if (isFinite(c) && c > -100) return c
+    var s = Number(numberOf(caps.temperature, 1))
+    return isFinite(s) ? s : NaN
+  }
+
+  // Humidifier
+  readonly property var humAttrs: attrsOf(caps.humidifier)
+  readonly property bool hasHumidifier: caps.humidifier !== ""
+  readonly property bool humidifying: (stateOf(caps.humidifier) || {}).state === "on"
+  readonly property real targetHumidity: Number(humAttrs.humidity)
+  readonly property real minHumidity: Number(humAttrs.min_humidity || 30)
+  readonly property real maxHumidity: Number(humAttrs.max_humidity || 70)
+
+  // Readings
+  readonly property string pm25: numberOf(caps.pm25)
+  readonly property string pm10: numberOf(caps.pm10)
+  readonly property string voc: numberOf(caps.voc, 1)
+  readonly property string no2: numberOf(caps.no2)
+  readonly property string co2: numberOf(caps.co2)
+  readonly property string hcho: numberOf(caps.hcho, 2)
+  readonly property string aqi: numberOf(caps.aqi)
+  readonly property string humidity: numberOf(caps.humidity)
+  readonly property string hepaFilter: numberOf(caps.hepaFilter)
+  readonly property bool filterDue: (stateOf(caps.filterReplacement) || {}).state === "on"
+
+  property string modelName: ""
+  readonly property string title: modelName !== "" ? modelName : rawName
+
+  // --- liveness -----------------------------------------------------------
+
+  property real staleMs: -1
+  property real lastReconnectAt: 0
+  readonly property bool stale: staleMs >= 0 && staleMs > staleSeconds * 1000
+
+  function refreshLiveness() {
+    if (!fanEntity || !states.length) { staleMs = -1; return }
+    staleMs = Dyson.stalenessMs(states, fanEntity)
+    if (!autoReconnect || !stale || !caps.reconnect || !service || !service.ready) return
+    // Rate-limited: a reconnect takes seconds to settle, and hammering the
+    // button would keep tearing down the session it is rebuilding.
+    var now = Date.now()
+    if (now - lastReconnectAt < 120000) return
+    lastReconnectAt = now
+    service.callService("button", "press", { entity_id: caps.reconnect })
+  }
+
+  onStatesChanged: {
+    refreshLiveness()
+    if (fanEntity && modelName === "" && service)
+      service.fetchModel(fanEntity, function(name) { root.modelName = name })
+  }
+  onFanEntityChanged: {
+    modelName = ""
+    historyPoints = []
+    if (fanEntity && service)
+      service.fetchModel(fanEntity, function(name) { root.modelName = name })
+  }
+
+  // --- history ------------------------------------------------------------
+
+  property var historyPoints: []
+  property var historyBounds: null
+
+  function fetchHistory() {
+    if (!service || !caps.pm25) return
+    service.fetchHistory(caps.pm25, historyHours, function(points) {
+      root.historyPoints = points
+      root.historyBounds = Dyson.historyStats(points)
+      graph.requestPaint()
+    })
+  }
+
+  Timer {
+    id: historyTimer
+    // Only while the panel is on screen: nobody is looking at the graph
+    // otherwise, and the recorder query is by far the heaviest.
+    interval: 300000
+    running: root.opened && !!root.service
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.fetchHistory()
+  }
+
+  // Tell the shared service to poll faster while any panel is open.
+  onOpenedChanged: {
+    if (!service) return
+    service.openPanels = Math.max(0, service.openPanels + (opened ? 1 : -1))
+  }
+  Component.onDestruction: {
+    if (service && opened) service.openPanels = Math.max(0, service.openPanels - 1)
+  }
+
+  // --- actions ------------------------------------------------------------
+  // Home Assistant answers before Dyson does, so nothing here waits for the
+  // poll: the panel draws the intent immediately and the next poll reconciles.
+
+  readonly property bool actionable: !!service && service.ready && fanEntity !== ""
+
+  function togglePower() {
+    if (!actionable) return
+    service.callService("fan", fanOn ? "turn_off" : "turn_on", { entity_id: fanEntity })
+  }
+  function setSpeed(value) {
+    if (!actionable) return
+    var next = Math.max(0, Math.min(maxSpeed, Math.round(value)))
+    if (next === speed) return
+    service.callService("fan", "set_percentage",
+      { entity_id: fanEntity, percentage: Dyson.percentageFromSpeed(next, fanAttrs) })
+  }
+  function toggleOscillation() {
+    if (!actionable) return
+    service.callService("fan", "oscillate", { entity_id: fanEntity, oscillating: !oscillating })
+  }
+  function toggleNight() {
+    if (!actionable || !caps.nightSwitch) return
+    service.callService("switch", nightMode ? "turn_off" : "turn_on", { entity_id: caps.nightSwitch })
+  }
+  // Auto is a switch on newer models and only a fan preset on older Link ones.
+  function toggleAuto() {
+    if (!actionable || !autoSupported) return
+    if (caps.autoSwitch)
+      service.callService("switch", autoMode ? "turn_off" : "turn_on", { entity_id: caps.autoSwitch })
+    else
+      service.callService("fan", "set_preset_mode",
+        { entity_id: fanEntity, preset_mode: autoMode ? "manual" : "auto" })
+  }
+  function setHvacMode(mode) {
+    if (!actionable || !hasClimate) return
+    service.callService("climate", "set_hvac_mode", { entity_id: caps.climate, hvac_mode: mode })
+  }
+  function setTargetTemp(value) {
+    if (!actionable || !hasClimate) return
+    var next = Math.max(minTemp, Math.min(maxTemp, Math.round(value)))
+    if (next === Math.round(targetTemp)) return
+    service.callService("climate", "set_temperature", { entity_id: caps.climate, temperature: next })
+  }
+  function toggleHumidifier() {
+    if (!actionable || !hasHumidifier) return
+    service.callService("humidifier", humidifying ? "turn_off" : "turn_on",
+      { entity_id: caps.humidifier })
+  }
+  function setTargetHumidity(value) {
+    if (!actionable || !hasHumidifier) return
+    var next = Math.max(minHumidity, Math.min(maxHumidity, Math.round(value)))
+    if (next === Math.round(targetHumidity)) return
+    service.callService("humidifier", "set_humidity",
+      { entity_id: caps.humidifier, humidity: next })
+  }
+
+  function openSettings(tab) {
+    if (bar && bar.shell && typeof bar.shell.summon === "function")
+      bar.shell.summon(root.moduleName, JSON.stringify({ tab: tab || "connection" }))
+  }
+
+  IpcHandler {
+    target: root.ipcTarget
+    function settings(): void { root.openSettings("connection") }
+    function devices(): void { root.openSettings("devices") }
+    function toggle(): void { root.toggle() }
+    function power(): void { root.togglePower() }
+  }
+
+  // --- bar button ---------------------------------------------------------
+
+  readonly property string pmBand: Dyson.pm25Band(pm25)
+  readonly property color pmColor: {
+    switch (pmBand) {
+    case "fair": return Color.accent
+    case "poor": return Color.urgent
+    case "bad": return Color.urgent
+    }
+    return bar ? bar.barForeground : Color.foreground
+  }
+
+  readonly property string barLabel: {
+    var icon = "󰈐"
+    if (stale) return icon
+    if (barMetric === "Fan speed") return fanOn && speed > 0 ? icon + "  " + speed : icon
+    if (barMetric === "PM2.5" && pm25 !== "") return icon + "  " + pm25
+    return icon
+  }
+
+  readonly property string statusLine: {
+    if (!service) return "Dyson Air: starting up"
+    if (!service.configured) return "Dyson Air: not connected — click to set up"
+    if (service.lastError !== "") return "Dyson Air: " + service.lastError
+    if (!service.everLoaded) return "Dyson Air: connecting"
+    if (fanEntity === "") return "Dyson Air: no Dyson found in Home Assistant"
+    if (stale) return title + " — no data for " + Math.round(staleMs / 60000)
+      + " min; Home Assistant lost the device" + (autoReconnect ? ", reconnecting" : "")
+    var parts = [title]
+    if (!fanOn) parts.push("off")
+    else if (heating) parts.push("heating to " + Math.round(targetTemp) + "°C · speed " + speed)
+    else parts.push("on · speed " + speed)
+    if (isFinite(currentTemp)) parts.push(currentTemp.toFixed(1) + "°C")
+    if (pm25 !== "") parts.push("PM2.5 " + pm25 + " µg/m³")
+    return parts.join(" — ")
+  }
+
+  implicitWidth: button.implicitWidth
+  implicitHeight: button.implicitHeight
+
+  WidgetButton {
+    id: button
+    anchors.fill: parent
+    bar: root.bar
+    text: root.barLabel
+    active: root.fanOn && !root.stale
+    // Stale reads as broken on purpose: the numbers are still there, but they
+    // describe the past. Presenting them at full strength is what makes a
+    // widget claim a device is off while it is plainly running.
+    dimmed: !root.actionable || root.stale
+    tooltipText: root.statusLine
+    onPressed: function(b) {
+      if (b === Qt.MiddleButton) root.togglePower()
+      else if (!root.service || !root.service.configured) root.openSettings("connection")
+      else root.toggle()
+    }
+    onWheelMoved: function(delta) {
+      if (!root.actionable) return
+      var wheel = Util.wheelSteps(root.wheelAccumulator, delta)
+      root.wheelAccumulator = wheel.remainder
+      if (wheel.steps === 0) return
+      root.setSpeed(root.speed + wheel.steps)
+    }
+  }
+  property int wheelAccumulator: 0
+
+  // --- panel --------------------------------------------------------------
+
+  KeyboardPanel {
+    id: panel
+    anchorItem: button
+    owner: root
+    bar: root.bar
+    open: root.opened
+    focusTarget: keyCatcher
+    contentWidth: panel.fittedContentWidth(Style.space(340))
+    contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(680))
+
+    PanelKeyCatcher {
+      id: keyCatcher
+      anchors.fill: parent
+      onMoveRequested: function(dx, dy) { if (dx !== 0) root.setSpeed(root.speed + dx) }
+      onActivateRequested: root.togglePower()
+      onCloseRequested: root.close()
+      onTabRequested: function(direction) { root.switchPanel(direction) }
+
+      ScrollView {
+        id: scrollArea
+        anchors.fill: parent
+        clip: true
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical.policy: panelColumn.implicitHeight > height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+
+        Column {
+          id: panelColumn
+          width: scrollArea.availableWidth
+          spacing: Style.space(14)
+
+          // ---------- Hero ----------
+          Item {
+            width: parent.width
+            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight)
+
+            Text {
+              id: heroIcon
+              text: "󰈐"
+              color: root.heating ? Color.urgent : (root.fanOn ? Color.accent : root.bar.foreground)
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.display
+              opacity: root.fanOn ? 1 : 0.5
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+
+              RotationAnimator on rotation {
+                running: root.fanOn && !root.stale
+                from: 0; to: 360
+                // Slowest speed turns once every 3s, fastest every ~0.35s:
+                // fast enough to read the dial at a glance without nagging.
+                duration: Math.max(350, 3000 - (root.speed - 1) * (2650 / Math.max(1, root.maxSpeed - 1)))
+                loops: Animation.Infinite
+              }
+              onRotationChanged: if (!root.fanOn) rotation = 0
+            }
+
+            Column {
+              id: heroLabels
+              anchors.left: heroIcon.right
+              anchors.leftMargin: Style.space(12)
+              anchors.right: settingsButton.left
+              anchors.rightMargin: Style.space(6)
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(2)
+
+              Text {
+                width: parent.width
+                text: root.title
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.title
+                elide: Text.ElideRight
+              }
+
+              Text {
+                width: parent.width
+                text: {
+                  if (!root.service || !root.service.configured) return "Not connected"
+                  if (root.service.lastError !== "") return root.service.lastError
+                  if (root.fanEntity === "") return "No Dyson found"
+                  if (root.stale) return "No data for " + Math.round(root.staleMs / 60000)
+                    + " min" + (root.autoReconnect ? " · reconnecting" : "")
+                  var s = root.fanOn ? "On · speed " + root.speed + " of " + root.maxSpeed : "Off"
+                  if (root.heating) s = "Heating · speed " + root.speed
+                  if (isFinite(root.currentTemp)) s += " · " + root.currentTemp.toFixed(1) + "°C"
+                  return s
+                }
+                color: root.bar.foreground
+                opacity: 0.6
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                elide: Text.ElideRight
+              }
+            }
+
+            PanelActionButton {
+              id: settingsButton
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              iconText: "󰒓"
+              foreground: root.bar.foreground
+              tooltipText: "Settings"
+              onClicked: { root.close(); root.openSettings("connection") }
+            }
+          }
+
+          // ---------- Device switcher ----------
+          // Only when there is a genuine choice and this widget is not pinned:
+          // a pinned widget showing a switcher would silently disagree with
+          // its own settings.
+          ButtonGroup {
+            width: parent.width
+            visible: root.fans.length > 1 && root.pinnedFan === ""
+            foreground: root.bar.foreground
+            background: root.bar.background
+            fontFamily: root.bar.fontFamily
+            options: {
+              var out = []
+              for (var i = 0; i < root.fans.length; i++) {
+                var f = root.fans[i]
+                out.push({ value: f.entityId, label: f.serial || f.name })
+              }
+              return out
+            }
+            value: root.fanEntity
+            onChanged: function(v) { root.overrideFan = v }
+          }
+
+          // ---------- Mode ----------
+          // On a heater this replaces a plain power toggle: the climate
+          // entity's "off" is the same off, and two controls could disagree
+          // about what the device is doing.
+          PanelSectionHeader {
+            width: parent.width
+            text: "Mode"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            visible: root.hasClimate
+          }
+
+          ButtonGroup {
+            width: parent.width
+            visible: root.hasClimate
+            enabled: root.actionable
+            opacity: root.actionable ? 1 : 0.4
+            foreground: root.bar.foreground
+            background: root.bar.background
+            fontFamily: root.bar.fontFamily
+            options: {
+              var out = []
+              for (var i = 0; i < root.hvacModes.length; i++) {
+                var m = String(root.hvacModes[i])
+                var label = m === "fan_only" ? "Fan" : (m === "heat" ? "Heat" : "Off")
+                out.push({ value: m, label: label })
+              }
+              return out
+            }
+            value: root.hvacMode
+            onChanged: function(v) { root.setHvacMode(v) }
+          }
+
+          Toggle {
+            width: parent.width
+            label: "Power"
+            description: "Turn the device on or off"
+            checked: root.fanOn
+            visible: !root.hasClimate
+            enabled: root.actionable
+            opacity: root.actionable ? 1 : 0.4
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            onClicked: root.togglePower()
+          }
+
+          // ---------- Target temperature ----------
+          PanelSectionHeader {
+            width: parent.width
+            text: "Target " + Math.round(root.targetTemp) + "°C"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            visible: root.heating
+          }
+
+          PanelSlider {
+            width: parent.width
+            // Only while heating: a target temperature on a device blowing
+            // cold air is a control with no effect to observe.
+            visible: root.heating
+            bar: root.bar
+            enabled: root.actionable
+            minimum: root.minTemp; maximum: root.maxTemp
+            step: 1; integer: true
+            value: root.targetTemp
+            onMoved: function(v) { root.setTargetTemp(v) }
+          }
+
+          // ---------- Humidity ----------
+          PanelSectionHeader {
+            width: parent.width
+            text: "Humidity — target " + Math.round(root.targetHumidity) + "%"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            visible: root.hasHumidifier
+          }
+
+          Toggle {
+            width: parent.width
+            label: "Humidify"
+            description: root.humidity !== "" ? "Room is at " + root.humidity + "%" : "Add moisture to the air"
+            checked: root.humidifying
+            visible: root.hasHumidifier
+            enabled: root.actionable
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            onClicked: root.toggleHumidifier()
+          }
+
+          PanelSlider {
+            width: parent.width
+            visible: root.hasHumidifier && root.humidifying
+            bar: root.bar
+            enabled: root.actionable
+            minimum: root.minHumidity; maximum: root.maxHumidity
+            step: 1; integer: true
+            value: root.targetHumidity
+            onMoved: function(v) { root.setTargetHumidity(v) }
+          }
+
+          // ---------- Speed ----------
+          PanelSectionHeader {
+            width: parent.width
+            text: "Speed"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          PanelSlider {
+            width: parent.width
+            bar: root.bar
+            enabled: root.actionable
+            opacity: root.actionable ? 1 : 0.4
+            minimum: 0; maximum: root.maxSpeed
+            step: 1; integer: true
+            tickCount: root.maxSpeed + 1
+            value: root.speed
+            onMoved: function(v) { root.setSpeed(v) }
+          }
+
+          // ---------- Modes ----------
+          PanelSectionHeader {
+            width: parent.width
+            text: "Modes"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          Toggle {
+            width: parent.width
+            label: "Oscillation"
+            description: "Sweep left and right"
+            checked: root.oscillating
+            enabled: root.actionable
+            opacity: root.actionable ? 1 : 0.4
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            onClicked: root.toggleOscillation()
+          }
+
+          // Hidden rather than greyed when the device has no such control: a
+          // permanently dead row is worse than a shorter panel.
+          Toggle {
+            width: parent.width
+            label: "Night mode"
+            description: "Quiet running, display dimmed"
+            checked: root.nightMode
+            visible: root.caps.nightSwitch !== undefined && root.caps.nightSwitch !== ""
+            enabled: root.actionable
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            onClicked: root.toggleNight()
+          }
+
+          Toggle {
+            width: parent.width
+            label: "Auto mode"
+            description: "Let the device follow air quality"
+            checked: root.autoMode
+            visible: root.autoSupported
+            enabled: root.actionable
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            onClicked: root.toggleAuto()
+          }
+
+          // ---------- Air quality ----------
+          PanelSectionHeader {
+            width: parent.width
+            text: "Air quality"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            visible: readings.hasAny
+          }
+
+          // PM2.5 over the last `historyHours`, the way the Dyson app plots it.
+          // Drawn rather than charted with a library: one series, no axes, and
+          // a Canvas keeps the plugin dependency-free.
+          Item {
+            width: parent.width
+            implicitHeight: Style.space(78)
+            visible: root.historyPoints.length > 1
+
+            Canvas {
+              id: graph
+              anchors.fill: parent
+              anchors.bottomMargin: Style.space(14)
+
+              readonly property var points: root.historyPoints
+              readonly property var bounds: root.historyBounds
+              readonly property color line: root.pmColor
+              onPointsChanged: requestPaint()
+              onLineChanged: requestPaint()
+
+              onPaint: {
+                var ctx = getContext("2d")
+                ctx.reset()
+                var b = bounds
+                if (!b || points.length < 2) return
+
+                var w = width, h = height
+                var tSpan = Math.max(1, b.tMax - b.tMin)
+                var vSpan = Math.max(0.0001, b.max - b.min)
+                function px(p) { return (p.t - b.tMin) / tSpan * w }
+                function py(p) { return h - (p.v - b.min) / vSpan * h }
+
+                ctx.beginPath()
+                ctx.moveTo(px(points[0]), h)
+                for (var i = 0; i < points.length; i++) ctx.lineTo(px(points[i]), py(points[i]))
+                ctx.lineTo(px(points[points.length - 1]), h)
+                ctx.closePath()
+                ctx.fillStyle = Qt.rgba(line.r, line.g, line.b, 0.16)
+                ctx.fill()
+
+                ctx.beginPath()
+                for (var j = 0; j < points.length; j++) {
+                  var x = px(points[j]), y = py(points[j])
+                  if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+                }
+                ctx.strokeStyle = line
+                ctx.lineWidth = Math.max(1.5, Style.space(2))
+                ctx.lineJoin = "round"; ctx.lineCap = "round"
+                ctx.stroke()
+
+                // Mark the latest reading — the one the numbers below quote.
+                var last = points[points.length - 1]
+                ctx.beginPath()
+                ctx.arc(px(last), py(last), Math.max(2.5, Style.space(3)), 0, Math.PI * 2)
+                ctx.fillStyle = line
+                ctx.fill()
+              }
+            }
+
+            // Peak and window, so a level line is still quantified: the
+            // minimum-span padding in historyStats means a steady reading
+            // draws flat, and these say which of the two you are looking at.
+            Text {
+              anchors.left: parent.left; anchors.bottom: parent.bottom
+              text: root.historyBounds ? "peak " + root.historyBounds.max.toFixed(0) + " µg/m³" : ""
+              color: root.bar.foreground; opacity: 0.5
+              font.family: root.bar.fontFamily; font.pixelSize: Style.font.caption
+            }
+            Text {
+              anchors.right: parent.right; anchors.bottom: parent.bottom
+              text: "last " + root.historyHours + "h"
+              color: root.bar.foreground; opacity: 0.5
+              font.family: root.bar.fontFamily; font.pixelSize: Style.font.caption
+            }
+          }
+
+          Grid {
+            id: readings
+            width: parent.width
+            columns: 2
+            columnSpacing: Style.space(10)
+            rowSpacing: Style.space(6)
+
+            readonly property var entries: {
+              var out = []
+              function add(label, value, unit, band) {
+                if (value !== "") out.push({ label: label, value: value, unit: unit, band: !!band })
+              }
+              add("PM2.5", root.pm25, "µg/m³", true)
+              add("PM10", root.pm10, "µg/m³", false)
+              add("VOC", root.voc, "", false)
+              add("NO₂", root.no2, "", false)
+              add("HCHO", root.hcho, "mg/m³", false)
+              add("CO₂", root.co2, "ppm", false)
+              add("AQI", root.aqi, "", false)
+              add("Humidity", root.humidity, "%", false)
+              add("Filter", root.hepaFilter, "%", false)
+              return out
+            }
+            readonly property bool hasAny: entries.length > 0
+            visible: hasAny
+
+            Repeater {
+              model: readings.entries
+
+              Item {
+                required property var modelData
+                width: (readings.width - Style.space(10)) / 2
+                implicitHeight: Math.max(readingLabel.implicitHeight, readingValue.implicitHeight)
+
+                Text {
+                  id: readingLabel
+                  anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+                  text: parent.modelData.label
+                  color: root.bar.foreground; opacity: 0.6
+                  font.family: root.bar.fontFamily; font.pixelSize: Style.font.caption
+                }
+
+                Text {
+                  id: readingValue
+                  anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                  text: parent.modelData.value + (parent.modelData.unit ? " " + parent.modelData.unit : "")
+                  // Only PM2.5 is banded. The others have no comparably settled
+                  // thresholds, so colouring them would imply a judgement this
+                  // widget cannot actually make.
+                  color: parent.modelData.band ? root.pmColor : root.bar.foreground
+                  font.family: root.bar.fontFamily; font.pixelSize: Style.font.body
+                }
+              }
+            }
+          }
+
+          Text {
+            width: parent.width
+            visible: root.filterDue
+            text: "󰀪  Filter needs replacing"
+            color: Color.urgent
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.allstars101-sudo.dyson-air",
+  "name": "Dyson Air",
+  "version": "0.1.0",
+  "author": "Chris Pagolu",
+  "license": "MIT",
+  "description": "Control Dyson purifiers, fans, heaters and humidifiers from the Omarchy bar, through Home Assistant.",
+  "kinds": ["service", "bar-widget", "overlay"],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "Panel.qml",
+    "overlay": "Settings.qml"
+  },
+  "barWidget": {
+    "displayName": "Dyson Air",
+    "description": "Speed, heat, oscillation, night mode and air quality for a Dyson device.",
+    "category": "Home",
+    "allowMultiple": true,
+    "defaultSection": "right",
+    "defaults": {
+      "barMetric": "Fan speed",
+      "historyHours": 24,
+      "pollSeconds": 30,
+      "staleSeconds": 300,
+      "autoReconnect": true
+    },
+    "schema": [
+      {
+        "key": "barMetric",
+        "type": "enum",
+        "label": "Number shown in the bar",
+        "options": ["Fan speed", "PM2.5", "None"],
+        "defaultValue": "Fan speed",
+        "description": "Fan speed is hidden while the device is off, since a speed with nothing running reads as stale."
+      },
+      {
+        "key": "historyHours",
+        "type": "integer",
+        "label": "Air quality graph window (hours)",
+        "min": 1,
+        "max": 240,
+        "step": 1,
+        "defaultValue": 24
+      },
+      {
+        "key": "pollSeconds",
+        "type": "integer",
+        "label": "Poll interval when every panel is closed (seconds)",
+        "min": 5,
+        "max": 300,
+        "step": 5,
+        "defaultValue": 30
+      },
+      {
+        "key": "staleSeconds",
+        "type": "integer",
+        "label": "Treat as stale after (seconds)",
+        "min": 60,
+        "max": 3600,
+        "step": 30,
+        "defaultValue": 300,
+        "description": "A live Dyson reports continuously, so silence this long means Home Assistant has lost the device."
+      },
+      {
+        "key": "autoReconnect",
+        "type": "boolean",
+        "label": "Reconnect automatically when stale",
+        "defaultValue": true,
+        "description": "Presses the integration's reconnect button, at most once every two minutes."
+      }
+    ]
+  }
+}

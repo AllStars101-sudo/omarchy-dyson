@@ -1,0 +1,525 @@
+[
+  {
+    "entity_id": "update.dyson_update",
+    "state": "off",
+    "last_updated": "2026-08-16T05:15:39.208232+00:00",
+    "attributes": {
+      "auto_update": false,
+      "display_precision": 0,
+      "installed_version": "v0.36.0",
+      "in_progress": false,
+      "latest_version": "v0.36.0",
+      "release_summary": null,
+      "release_url": "https://github.com/cmgrayb/hass-dyson/releases/v0.36.0",
+      "skipped_version": null,
+      "title": null,
+      "update_percentage": null,
+      "entity_picture": "https://brands.home-assistant.io/_/hass_dyson/icon.png",
+      "friendly_name": "Dyson Update",
+      "supported_features": 23
+    }
+  },
+  {
+    "entity_id": "binary_sensor.dyson_sz2_au_tba2519a_filter_replacement",
+    "state": "off",
+    "last_updated": "2026-08-16T05:19:23.074523+00:00",
+    "attributes": {
+      "device_class": "problem",
+      "icon": "mdi:air-filter",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Filter Replacement"
+    }
+  },
+  {
+    "entity_id": "binary_sensor.dyson_sz2_au_tba2519a_fault_motor",
+    "state": "off",
+    "last_updated": "2026-08-16T05:19:23.448462+00:00",
+    "attributes": {
+      "fault_code": "mflr",
+      "status": "No data",
+      "device_class": "problem",
+      "icon": "mdi:fan-alert",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Fault Motor"
+    }
+  },
+  {
+    "entity_id": "binary_sensor.dyson_sz2_au_tba2519a_fault_temperature_sensor",
+    "state": "off",
+    "last_updated": "2026-08-16T05:19:23.448531+00:00",
+    "attributes": {
+      "fault_code": "temp",
+      "status": "No data",
+      "device_class": "problem",
+      "icon": "mdi:thermometer-alert",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Fault Temperature Sensor"
+    }
+  },
+  {
+    "entity_id": "binary_sensor.dyson_sz2_au_tba2519a_fault_power_supply",
+    "state": "off",
+    "last_updated": "2026-08-16T05:19:23.448568+00:00",
+    "attributes": {
+      "fault_code": "pwr",
+      "status": "No data",
+      "device_class": "problem",
+      "icon": "mdi:power-plug-off",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Fault Power Supply"
+    }
+  },
+  {
+    "entity_id": "binary_sensor.dyson_sz2_au_tba2519a_fault_wifi_connection",
+    "state": "off",
+    "last_updated": "2026-08-16T05:19:23.448602+00:00",
+    "attributes": {
+      "fault_code": "wifi",
+      "status": "No data",
+      "device_class": "problem",
+      "icon": "mdi:wifi-off",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Fault WiFi Connection"
+    }
+  },
+  {
+    "entity_id": "binary_sensor.dyson_sz2_au_tba2519a_fault_system",
+    "state": "off",
+    "last_updated": "2026-08-16T05:19:23.448634+00:00",
+    "attributes": {
+      "fault_code": "sys",
+      "status": "No data",
+      "device_class": "problem",
+      "icon": "mdi:alert-circle",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Fault System"
+    }
+  },
+  {
+    "entity_id": "switch.dyson_sz2_au_tba2519a_night_mode",
+    "state": "off",
+    "last_updated": "2026-08-16T05:19:23.064867+00:00",
+    "attributes": {
+      "icon": "mdi:weather-night",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Night Mode"
+    }
+  },
+  {
+    "entity_id": "switch.dyson_sz2_au_tba2519a_firmware_auto_update",
+    "state": "off",
+    "last_updated": "2026-08-16T05:20:58.650935+00:00",
+    "attributes": {
+      "current_firmware_version": "21.04.03",
+      "icon": "mdi:cloud-sync",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Firmware Auto Update"
+    }
+  },
+  {
+    "entity_id": "switch.dyson_sz2_au_tba2519a_continuous_monitoring",
+    "state": "on",
+    "last_updated": "2026-08-16T05:19:23.065326+00:00",
+    "attributes": {
+      "continuous_monitoring": true,
+      "monitoring_mode": "ON",
+      "icon": "mdi:monitor-eye",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Continuous Monitoring"
+    }
+  },
+  {
+    "entity_id": "climate.dyson_sz2_au_tba2519a",
+    "state": "fan_only",
+    "last_updated": "2026-08-16T08:06:05.744638+00:00",
+    "attributes": {
+      "hvac_modes": [
+        "off",
+        "fan_only",
+        "heat"
+      ],
+      "min_temp": 1,
+      "max_temp": 37,
+      "target_temp_step": 1,
+      "fan_modes": [
+        "focus",
+        "diffuse"
+      ],
+      "current_temperature": 25.0,
+      "temperature": 28.9,
+      "fan_mode": "focus",
+      "hvac_action": "fan",
+      "target_temperature": 28.850000000000023,
+      "hvac_mode": "fan_only",
+      "heating_mode": "OFF",
+      "heating_status": "OFF",
+      "fan_power": "OFF",
+      "target_temperature_kelvin": "3020",
+      "icon": "mdi:thermostat",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A",
+      "supported_features": 393
+    }
+  },
+  {
+    "entity_id": "button.dyson_sz2_au_tba2519a_reconnect",
+    "state": "unknown",
+    "last_updated": "2026-08-16T05:19:23.066087+00:00",
+    "attributes": {
+      "icon": "mdi:wifi-sync",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Reconnect"
+    }
+  },
+  {
+    "entity_id": "update.dyson_sz2_au_tba2519a_firmware_update",
+    "state": "off",
+    "last_updated": "2026-08-16T05:20:58.651121+00:00",
+    "attributes": {
+      "auto_update": false,
+      "display_precision": 0,
+      "installed_version": "21.04.03",
+      "in_progress": false,
+      "latest_version": "21.04.03",
+      "release_summary": null,
+      "release_url": null,
+      "skipped_version": null,
+      "title": "Dyson Device Firmware",
+      "update_percentage": null,
+      "device_class": "firmware",
+      "entity_picture": "/api/brands/integration/hass_dyson/icon.png",
+      "icon": "mdi:cellphone-arrow-down",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Firmware Update",
+      "supported_features": 1
+    }
+  },
+  {
+    "entity_id": "number.dyson_sz2_au_tba2519a_sleep_timer",
+    "state": "0",
+    "last_updated": "2026-08-16T05:19:23.066840+00:00",
+    "attributes": {
+      "min": 0,
+      "max": 540,
+      "step": 15,
+      "mode": "box",
+      "sleep_timer_minutes": 0,
+      "sleep_timer_raw": "OFF",
+      "sleep_timer_enabled": false,
+      "unit_of_measurement": "min",
+      "icon": "mdi:timer",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Sleep Timer"
+    }
+  },
+  {
+    "entity_id": "sensor.dyson_sz2_au_tba2519a_particulates",
+    "state": "6",
+    "last_updated": "2026-08-16T07:52:53.719212+00:00",
+    "attributes": {
+      "state_class": "measurement",
+      "unit_of_measurement": "μg/m³",
+      "device_class": "pm25",
+      "icon": "mdi:air-filter",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Particulates"
+    }
+  },
+  {
+    "entity_id": "sensor.dyson_sz2_au_tba2519a_voc",
+    "state": "0.003",
+    "last_updated": "2026-08-16T08:02:47.742278+00:00",
+    "attributes": {
+      "state_class": "measurement",
+      "unit_of_measurement": "mg/m³",
+      "device_class": "volatile_organic_compounds",
+      "icon": "mdi:air-filter",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A VOC"
+    }
+  },
+  {
+    "entity_id": "sensor.dyson_sz2_au_tba2519a_wifi_signal",
+    "state": "-39",
+    "last_updated": "2026-08-16T08:06:38.647070+00:00",
+    "attributes": {
+      "state_class": "measurement",
+      "unit_of_measurement": "dBm",
+      "device_class": "signal_strength",
+      "icon": "mdi:wifi",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A WiFi Signal"
+    }
+  },
+  {
+    "entity_id": "sensor.dyson_sz2_au_tba2519a_connection_status",
+    "state": "Cloud",
+    "last_updated": "2026-08-16T05:19:23.068781+00:00",
+    "attributes": {
+      "icon": "mdi:connection",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Connection Status"
+    }
+  },
+  {
+    "entity_id": "sensor.dyson_sz2_au_tba2519a_hepa_filter_life",
+    "state": "0",
+    "last_updated": "2026-08-16T05:19:23.075108+00:00",
+    "attributes": {
+      "state_class": "measurement",
+      "unit_of_measurement": "%",
+      "icon": "mdi:air-filter",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A HEPA Filter Life"
+    }
+  },
+  {
+    "entity_id": "sensor.dyson_sz2_au_tba2519a_hepa_filter_type",
+    "state": "Not Installed",
+    "last_updated": "2026-08-16T05:19:23.075135+00:00",
+    "attributes": {
+      "icon": "mdi:air-filter",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A HEPA Filter Type"
+    }
+  },
+  {
+    "entity_id": "sensor.dyson_sz2_au_tba2519a_temperature",
+    "state": "25.0",
+    "last_updated": "2026-08-16T08:06:05.744815+00:00",
+    "attributes": {
+      "state_class": "measurement",
+      "unit_of_measurement": "°C",
+      "device_class": "temperature",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Temperature"
+    }
+  },
+  {
+    "entity_id": "sensor.dyson_sz2_au_tba2519a_humidity",
+    "state": "65",
+    "last_updated": "2026-08-16T07:57:50.742829+00:00",
+    "attributes": {
+      "state_class": "measurement",
+      "unit_of_measurement": "%",
+      "device_class": "humidity",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Humidity"
+    }
+  },
+  {
+    "entity_id": "sensor.dyson_sz2_au_tba2519a_air_quality_index",
+    "state": "9",
+    "last_updated": "2026-08-16T07:52:53.719399+00:00",
+    "attributes": {
+      "state_class": "measurement",
+      "category": "Good",
+      "dominant_pollutants": [
+        "PM2.5"
+      ],
+      "device_class": "aqi",
+      "icon": "mdi:air-filter",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Air Quality Index"
+    }
+  },
+  {
+    "entity_id": "sensor.dyson_sz2_au_tba2519a_air_quality_category",
+    "state": "Good",
+    "last_updated": "2026-08-16T07:52:53.719429+00:00",
+    "attributes": {
+      "aqi": 9,
+      "dominant_pollutants": [
+        "PM2.5"
+      ],
+      "icon": "mdi:air-filter",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Air Quality Category"
+    }
+  },
+  {
+    "entity_id": "sensor.dyson_sz2_au_tba2519a_dominant_pollutant",
+    "state": "PM2.5",
+    "last_updated": "2026-08-16T07:52:53.719459+00:00",
+    "attributes": {
+      "aqi": 9,
+      "category": "Good",
+      "pollutant_count": 1,
+      "icon": "mdi:molecule",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Dominant Pollutant"
+    }
+  },
+  {
+    "entity_id": "fan.dyson_sz2_au_tba2519a",
+    "state": "on",
+    "last_updated": "2026-08-16T08:01:20.558683+00:00",
+    "attributes": {
+      "preset_modes": [
+        "auto",
+        "manual",
+        "heat"
+      ],
+      "oscillating": false,
+      "percentage": 100,
+      "percentage_step": 10.0,
+      "preset_mode": "manual",
+      "fan_speed": 100,
+      "direction": "forward",
+      "is_on": true,
+      "fan_power": false,
+      "fan_state": "FAN",
+      "fan_speed_setting": "0010",
+      "auto_mode": false,
+      "night_mode": false,
+      "oscillation_enabled": false,
+      "angle_low": 0,
+      "angle_high": 350,
+      "oscillation_span": 350,
+      "sleep_timer": 0,
+      "current_temperature": -273.15,
+      "target_temperature": 28.850000000000023,
+      "hvac_mode": "off",
+      "temperature_unit": "°C",
+      "heating_mode": "OFF",
+      "heating_enabled": false,
+      "target_temperature_kelvin": "3020",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A",
+      "supported_features": 59
+    }
+  },
+  {
+    "entity_id": "calendar.dyson_sz2_au_tba2519a_schedule",
+    "state": "off",
+    "last_updated": "2026-08-16T05:19:23.540923+00:00",
+    "attributes": {
+      "icon": "mdi:calendar-clock",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Schedule"
+    }
+  },
+  {
+    "entity_id": "sensor.dyson_sz2_au_tba2519a_outdoor_aqi",
+    "state": "44",
+    "last_updated": "2026-08-16T07:57:18.826408+00:00",
+    "attributes": {
+      "state_class": "measurement",
+      "aqi_name": "Good",
+      "aqi_description": "Air quality is considered good, and air pollution poses little or no risk. Enjoy activities",
+      "pm2_5": 6,
+      "pm10": 16,
+      "no2": 6,
+      "humidity": null,
+      "temperature": null,
+      "weather_state": 2,
+      "location": "Rosebery",
+      "dominant_pollen": null,
+      "as_of": "2026-08-16T07:00:00Z",
+      "device_class": "aqi",
+      "icon": "mdi:weather-windy",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Outdoor AQI"
+    }
+  },
+  {
+    "entity_id": "sensor.dyson_sz2_au_tba2519a_scheduled_events",
+    "state": "0 active",
+    "last_updated": "2026-08-16T05:19:23.577876+00:00",
+    "attributes": {
+      "schedule_enabled": true,
+      "active_schedule_count": 0,
+      "active_event_count": 0,
+      "total_event_count": 0,
+      "events": [],
+      "icon": "mdi:calendar-clock",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Scheduled Events"
+    }
+  },
+  {
+    "entity_id": "sensor.dyson_sz2_au_tba2519a_indoor_aqi_15_min",
+    "state": "unknown",
+    "last_updated": "2026-08-16T05:19:23.843256+00:00",
+    "attributes": {
+      "state_class": "measurement",
+      "start_time": "2026-08-09T14:00:00Z",
+      "resolution": 15,
+      "sample_count": 672,
+      "min": null,
+      "max": null,
+      "last_24h": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "icon": "mdi:chart-line",
+      "friendly_name": "Dyson SZ2-AU-TBA2519A Indoor AQI (15-min)"
+    }
+  }
+]
