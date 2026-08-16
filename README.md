@@ -146,7 +146,8 @@ Air treatment only. Dyson robot vacuums and lights are out of scope.
 ```bash
 npm test          # 123 tests
 npm run coverage  # tests + the 100% gate
-npm run lint      # QML parse, manifest, entry points
+npm run lint        # manifest, cross-file symbols, QML syntax
+npm run lint:strict # the above plus full qmllint semantics (needs Omarchy)
 npm run check     # all three, as CI runs them
 ```
 
@@ -167,9 +168,13 @@ coverage**, enforced per file by `scripts/check-coverage.js`:
 The QML is **not** covered, and the coverage number does not claim otherwise.
 `Panel.qml`, `Settings.qml`, `Service.qml` and `CredentialManager.qml` hold
 polling, HTTP, the keyring, IPC and rendering — none of which can run outside a
-live Omarchy shell. They are checked structurally by `scripts/check-qml.sh`
-(parse, entry points, schema/default agreement) and verified by hand against
-real hardware. View *logic* was deliberately moved out of `Panel.qml` into
+live Omarchy shell. They are checked structurally by `scripts/check-qml.sh`: manifest and entry
+points, cross-file symbol references (every `Dyson.foo()` a QML file calls must
+exist — `Service.qml` once called a function deleted several commits earlier and
+nothing noticed), and QML syntax. `--strict` adds full qmllint semantics but
+needs the Omarchy shell present to resolve `qs.Ui`, so CI runs syntax mode and
+the strict pass is a local step. They are also verified by hand against real
+hardware. View *logic* was deliberately moved out of `Panel.qml` into
 `View.js` precisely so it could be tested; what remains in QML is layout and
 plumbing.
 

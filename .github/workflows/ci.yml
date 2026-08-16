@@ -53,21 +53,16 @@ jobs:
         with:
           node-version: '22'
 
-      # qmllint needs the QtQuick QML modules themselves, not just the binary:
-      # without them every file fails to import QtQuick and the parse check has
-      # nothing left to check.
-      - name: Install qmllint and the QtQuick modules
+      - name: Install qmllint
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            qt6-declarative-dev-tools \
-            qml6-module-qtquick \
-            qml6-module-qtquick-controls \
-            qml6-module-qtquick-templates \
-            qml6-module-qtqml-workerscript
+          sudo apt-get install -y --no-install-recommends qt6-declarative-dev-tools
 
+      # Syntax mode: a runner has no Quickshell and no Omarchy shell, so every
+      # type resolves to nothing and semantic diagnostics would be noise. The
+      # strict pass (npm run lint:strict) runs on a machine that has Omarchy.
       - name: Structural check
-        run: QMLLINT=$(command -v qmllint6 || command -v qmllint) ./scripts/check-qml.sh
+        run: QMLLINT=$(command -v qmllint6 || command -v qmllint) npm run lint
 
   package:
     name: Marketplace requirements
