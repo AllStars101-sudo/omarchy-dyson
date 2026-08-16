@@ -334,3 +334,7 @@ function stalenessMs(states, fanEntity, now) {
   if (!newest) return -1
   return Math.max(0, (now === undefined ? Date.now() : now) - newest)
 }
+
+// QML imports this file directly and never defines `module`; the guard lets
+// node require() the same source so coverage instrumentation can see it.
+if (typeof module !== "undefined") module.exports = { companionEntity: companionEntity, deviceEntities: deviceEntities, discover: discover, hasPreset: hasPreset, historyStats: historyStats, isAutoMode: isAutoMode, isDysonFan: isDysonFan, listFans: listFans, modelName: modelName, newestUpdate: newestUpdate, parseHistory: parseHistory, percentageFromSpeed: percentageFromSpeed, pm25Band: pm25Band, primaryEntity: primaryEntity, resolveFan: resolveFan, sensorByClass: sensorByClass, sensorByName: sensorByName, serialFromName: serialFromName, slugOf: slugOf, speedFromPercentage: speedFromPercentage, stalenessMs: stalenessMs, stepsFor: stepsFor, MODEL_NAMES: MODEL_NAMES }

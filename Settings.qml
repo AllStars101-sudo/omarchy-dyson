@@ -6,6 +6,7 @@ import qs.Ui
 import qs.Commons
 import "Dyson.js" as Dyson
 import "Origin.js" as Origin
+import "View.js" as View
 
 // Settings overlay: connection on one tab, devices and display on the other.
 //
@@ -101,35 +102,13 @@ Item {
   // can do it: a widget cannot see its own position in the layout.
 
   readonly property int layoutRevision: shell && shell.barConfig ? 1 : 0
-  readonly property var placements: {
-    var out = []
-    if (!shell || !shell.barConfig || !shell.barConfig.layout) return out
-    var sections = ["left", "center", "right"]
-    for (var s = 0; s < sections.length; s++) {
-      var list = shell.barConfig.layout[sections[s]] || []
-      for (var i = 0; i < list.length; i++) {
-        var entry = list[i]
-        var id = entry && entry.id ? String(entry.id) : String(entry)
-        if (id !== root.pluginId) continue
-        out.push({
-          section: sections[s],
-          index: i,
-          fanEntity: entry && entry.fanEntity ? String(entry.fanEntity) : ""
-        })
-      }
-    }
-    return out
-  }
+  readonly property var placements: shell && shell.barConfig
+    ? View.placements(shell.barConfig.layout, root.pluginId) : []
 
   readonly property var fans: service && service.states.length
     ? Dyson.listFans(service.states) : []
 
-  function fanOptions() {
-    var out = [{ value: "", label: "Automatic" }]
-    for (var i = 0; i < fans.length; i++)
-      out.push({ value: fans[i].entityId, label: fans[i].serial || fans[i].name })
-    return out
-  }
+  function fanOptions() { return View.deviceOptions(root.fans, true) }
 
   function assignDevice(placement, entityId) {
     if (!pluginRegistry || typeof pluginRegistry.setBarWidget !== "function") {
@@ -302,17 +281,17 @@ Item {
 
             Text {
               width: parent.width
-              text: {
-                if (root.notice) return root.notice
-                if (!root.service) return ""
-                if (root.service.lastError) return root.service.lastError
-                if (root.service.ready) return "Connected · " + root.fans.length
-                  + (root.fans.length === 1 ? " Dyson found" : " Dysons found")
-                if (root.configured) return "Connecting…"
-                return "Not connected."
-              }
-              color: root.service && root.service.lastError ? Color.urgent : Color.menu.text
-              opacity: root.service && root.service.lastError ? 1 : 0.7
+              readonly property var status: View.connectionStatus({
+                notice: root.notice,
+                hasService: !!root.service,
+                lastError: root.service ? root.service.lastError : "",
+                ready: !!root.service && root.service.ready,
+                configured: root.configured,
+                fanCount: root.fans.length
+              })
+              text: status.text
+              color: status.error ? Color.urgent : Color.menu.text
+              opacity: status.error ? 1 : 0.7
               wrapMode: Text.WordWrap
               font.family: Style.font.family
               font.pixelSize: Style.font.caption
@@ -362,7 +341,7 @@ Item {
                 Text {
                   width: Style.space(120)
                   anchors.verticalCenter: parent.verticalCenter
-                  text: parent.modelData.section + " · " + (parent.modelData.index + 1)
+                  text: parent.modelData.label
                   color: Color.menu.text
                   opacity: 0.7
                   font.family: Style.font.family

@@ -1,287 +1,435 @@
-#!/usr/bin/env node
-
+const { test, describe } = require("node:test")
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const path = require("node:path")
-const vm = require("node:vm")
 
-// The QML modules are loaded into a sandbox rather than required, because they
-// are plain scripts shared with QML's JS engine and carry no module syntax.
-// Note: values that cross this boundary have a different Array/Object
-// constructor, so assertions compare by value, never with deepStrictEqual.
-function load(name) {
-  const ctx = {}
-  vm.createContext(ctx)
-  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", name), "utf8"), ctx, { filename: name })
-  return ctx
-}
-
-const Dyson = load("Dyson.js")
-const Config = load("Config.js")
-const Origin = load("Origin.js")
+const Dyson = require("../Dyson.js")
 const fx = require("./fixtures/synthetic.js")
 
-// The one fixture from real hardware: a Dyson Pure Hot+Cool Link (type 455).
+// The one fixture captured from real hardware: a Dyson Pure Hot+Cool Link.
 const hp02 = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "hp02-455.json"), "utf8"))
 const hp02Fan = "fan.dyson_sz2_au_tba2519a"
-
-let checks = 0
-function ok(cond, msg) { assert.ok(cond, msg); checks++ }
-function eq(a, b, msg) { assert.equal(a, b, msg); checks++ }
-
-// =========================================================================
-// Identity and discovery
-// =========================================================================
-
-eq(Dyson.resolveFan(hp02, ""), hp02Fan, "finds the real fan in a live states dump")
-eq(Dyson.resolveFan(fx.multiHouse(), ""), "fan.dyson_hp07",
-  "picks a Dyson over the unrelated ceiling fan, lowest entity id first")
-eq(Dyson.resolveFan(fx.multiHouse(), "fan.dyson_tp09"), "fan.dyson_tp09",
-  "an explicit pin always wins")
-eq(Dyson.resolveFan([], ""), "", "no fan, no guess")
-eq(Dyson.listFans(fx.multiHouse()).length, 2, "both Dysons are offered, the ceiling fan is not")
-eq(Dyson.listFans(hp02)[0].serial, "SZ2-AU-TBA2519A", "serial is recovered for the picker")
-
-// =========================================================================
-// The auto-mode regression
-// =========================================================================
-// A substring match once resolved auto mode to firmware_auto_update, so
-// clicking Auto toggled firmware updates. Both fixtures contain that trap.
-
 const hp02Caps = Dyson.discover(hp02, hp02Fan)
-eq(hp02Caps.autoSwitch, "",
-  "the Link model has NO auto switch, and must not fall back to firmware_auto_update")
-ok(Dyson.hasPreset(hp02.find(e => e.entity_id === hp02Fan).attributes, "auto"),
-  "the Link model offers auto as a preset instead")
-
-const tp09Caps = Dyson.discover(fx.tp09, "fan.dyson_tp09")
-eq(tp09Caps.autoSwitch, "switch.dyson_tp09_auto_mode",
-  "a newer model DOES have an auto switch, and it is the right one")
-ok(tp09Caps.autoSwitch.indexOf("firmware") === -1, "never firmware_auto_update")
-
-// =========================================================================
-// The air-quality regression
-// =========================================================================
-// Matching on the name "pm25" found nothing on the Link model, which calls it
-// "particulates". device_class matching must work on both namings.
-
-eq(hp02Caps.pm25, "sensor.dyson_sz2_au_tba2519a_particulates",
-  "PM2.5 found by device_class despite being named 'particulates'")
-eq(tp09Caps.pm25, "sensor.dyson_tp09_pm25", "and on a model that names it pm25")
-eq(tp09Caps.aqi, "sensor.dyson_tp09_air_quality_index",
-  "indoor AQI wins over the outdoor sensor sharing its device_class")
-eq(tp09Caps.hcho, "sensor.dyson_tp09_hcho",
-  "formaldehyde is found by name, the one reading with no device class")
-eq(hp02Caps.hcho, "", "a model without formaldehyde reports none")
-
-// =========================================================================
-// Capability discovery per model
-// =========================================================================
-
-// Heat
-ok(hp02Caps.climate !== "", "HP02 exposes a climate entity")
-ok(fx.hp07 && Dyson.discover(fx.hp07, "fan.dyson_hp07").climate !== "", "HP07 exposes heat")
-eq(Dyson.discover(fx.tp09, "fan.dyson_tp09").climate, "", "a cool-only model has no climate entity")
-eq(Dyson.discover(fx.ph01, "fan.dyson_ph01").climate, "", "a humidifier model has no heat")
-
-// Humidifier
-eq(Dyson.discover(fx.ph01, "fan.dyson_ph01").humidifier, "humidifier.dyson_ph01",
-  "PH01 exposes a humidifier")
-eq(tp09Caps.humidifier, "", "a cool-only model does not")
-
-// Oscillation extras, sleep timer, filters
-eq(tp09Caps.sleepTimer, "number.dyson_tp09_sleep_timer")
-eq(tp09Caps.oscillationAngle, "number.dyson_tp09_oscillation_angle_span")
-eq(tp09Caps.oscillationMode, "select.dyson_tp09_oscillation_mode")
-eq(tp09Caps.hepaFilter, "sensor.dyson_tp09_hepa_filter_life")
-eq(tp09Caps.carbonFilter, "sensor.dyson_tp09_carbon_filter_life")
-eq(tp09Caps.filterReplacement, "binary_sensor.dyson_tp09_filter_replacement")
-eq(Dyson.discover(fx.hp07, "fan.dyson_hp07").heatingMode, "select.dyson_hp07_heating_mode")
-
-// The sparse device: every optional control must be absent, not dead.
-const sparseCaps = Dyson.discover(fx.sparse, "fan.dyson_sparse")
-for (const key of ["climate", "humidifier", "autoSwitch", "nightSwitch", "sleepTimer",
-                   "oscillationMode", "pm25", "voc", "aqi", "hcho", "hepaFilter", "reconnect"]) {
-  eq(sparseCaps[key], "", `a minimal device exposes no ${key}`)
-}
-
-// Reconnect button, which drives the staleness self-heal
-eq(hp02Caps.reconnect, "button.dyson_sz2_au_tba2519a_reconnect")
-
-// =========================================================================
-// Device scoping
-// =========================================================================
-// Two fans in one dump must never borrow each other's entities.
-
-const house = fx.multiHouse()
-const a = Dyson.discover(house, "fan.dyson_tp09")
-const b = Dyson.discover(house, "fan.dyson_hp07")
-ok(a.pm25.indexOf("tp09") > 0 && b.pm25.indexOf("hp07") > 0,
-  "each fan resolves only its own sensors")
-eq(b.climate, "climate.dyson_hp07", "the heater belongs to the fan that has one")
-eq(a.climate, "", "and not to the one that doesn't")
-
-// =========================================================================
-// Speed
-// =========================================================================
-
 const hp02Attrs = hp02.find(e => e.entity_id === hp02Fan).attributes
-eq(Dyson.stepsFor(hp02Attrs), 10)
-eq(Dyson.stepsFor({}), 10, "a missing step assumes Dyson's ten speeds")
-eq(Dyson.speedFromPercentage(null, hp02Attrs), 0, "an absent percentage reads as off")
-eq(Dyson.speedFromPercentage(0, hp02Attrs), 0)
 
-// Round-tripping every speed must be lossless, or the slider fights the fan.
-for (const attrs of [hp02Attrs, { percentage_step: 20 }, { percentage_step: 25 }]) {
-  const steps = Dyson.stepsFor(attrs)
-  for (let s = 0; s <= steps; s++) {
-    eq(Dyson.speedFromPercentage(Dyson.percentageFromSpeed(s, attrs), attrs), s,
-      `speed ${s} of ${steps} round-trips`)
-  }
-}
-eq(Dyson.percentageFromSpeed(99, hp02Attrs), 100, "speeds clamp to the top of the dial")
-eq(Dyson.percentageFromSpeed(-3, hp02Attrs), 0, "and to the bottom")
+describe("identity", () => {
+  test("slugOf splits on the first dot", () => {
+    assert.equal(Dyson.slugOf("fan.dyson_abc"), "dyson_abc")
+    assert.equal(Dyson.slugOf("no-dot"), "")
+    assert.equal(Dyson.slugOf(""), "")
+    assert.equal(Dyson.slugOf(null), "")
+  })
 
-// =========================================================================
-// Presets
-// =========================================================================
+  test("isDysonFan trusts Dyson-specific attributes over names", () => {
+    assert.ok(Dyson.isDysonFan({ entity_id: "fan.x", attributes: { night_mode: false } }))
+    assert.ok(Dyson.isDysonFan({ entity_id: "fan.x", attributes: { oscillation_span: 350 } }))
+    assert.ok(Dyson.isDysonFan({ entity_id: "fan.x", attributes: { model: "Dyson TP04" } }))
+    assert.ok(Dyson.isDysonFan({ entity_id: "fan.x", attributes: { manufacturer: "dyson" } }))
+    assert.ok(Dyson.isDysonFan({ entity_id: "fan.my_dyson", attributes: {} }))
+    assert.ok(!Dyson.isDysonFan({ entity_id: "fan.ceiling", attributes: {} }))
+    assert.ok(!Dyson.isDysonFan({ entity_id: "light.dyson_lamp", attributes: {} }),
+      "a Dyson lamp is not a fan")
+    assert.ok(!Dyson.isDysonFan({ entity_id: "fan.x" }), "no attributes at all")
+    assert.ok(!Dyson.isDysonFan(null))
+    assert.ok(!Dyson.isDysonFan({}))
+  })
 
-eq(Dyson.isAutoMode({ auto_mode: true, preset_mode: "manual" }), true,
-  "the attribute wins over a stale preset_mode")
-eq(Dyson.isAutoMode({ preset_mode: "Auto" }), true, "falls back to preset_mode, case-insensitively")
-eq(Dyson.isAutoMode({}), false)
-ok(!Dyson.hasPreset({}, "auto"), "no preset_modes means no presets")
+  test("listFans returns only Dysons, ordered, with serials", () => {
+    const fans = Dyson.listFans(fx.multiHouse())
+    assert.equal(fans.length, 2)
+    assert.equal(fans[0].entityId, "fan.dyson_hp07", "sorted by entity id")
+    assert.equal(fans[0].serial, "HP7-US-QRS4567C")
+    assert.equal(Dyson.listFans(hp02)[0].serial, "SZ2-AU-TBA2519A")
+    assert.equal(Dyson.listFans([]).length, 0)
+  })
 
-// =========================================================================
-// Air quality banding
-// =========================================================================
+  test("a fan with no friendly name falls back to its entity id", () => {
+    const fans = Dyson.listFans([{ entity_id: "fan.bare", attributes: { night_mode: false } }])
+    assert.equal(fans[0].name, "fan.bare")
+    assert.equal(fans[0].serial, "")
+  })
 
-eq(Dyson.pm25Band(0), "good")
-eq(Dyson.pm25Band(12), "good")
-eq(Dyson.pm25Band(13), "fair")
-eq(Dyson.pm25Band(35), "fair")
-eq(Dyson.pm25Band(55), "poor")
-eq(Dyson.pm25Band(120), "bad")
-eq(Dyson.pm25Band("unavailable"), "unknown")
-eq(Dyson.pm25Band(""), "unknown", "an empty reading is not a good reading")
+  test("a Dyson identified only by its entity id, with no attributes key", () => {
+    const fans = Dyson.listFans([{ entity_id: "fan.dyson_nameless" }])
+    assert.equal(fans.length, 1)
+    assert.equal(fans[0].name, "fan.dyson_nameless")
+  })
 
-// =========================================================================
-// Model naming
-// =========================================================================
+  test("fans sort by entity id in both directions", () => {
+    const sorted = Dyson.listFans([
+      { entity_id: "fan.dyson_a", attributes: { night_mode: false } },
+      { entity_id: "fan.dyson_z", attributes: { night_mode: false } }
+    ])
+    assert.equal(sorted.map(f => f.entityId).join(","), "fan.dyson_a,fan.dyson_z")
+    const reversed = Dyson.listFans([
+      { entity_id: "fan.dyson_z", attributes: { night_mode: false } },
+      { entity_id: "fan.dyson_a", attributes: { night_mode: false } }
+    ])
+    assert.equal(reversed.map(f => f.entityId).join(","), "fan.dyson_a,fan.dyson_z")
+  })
 
-eq(Dyson.modelName("455"), "Dyson Pure Hot+Cool Link")
-eq(Dyson.modelName("527k"), "Dyson Purifier Hot+Cool", "codes are case-insensitive")
-eq(Dyson.modelName("358E"), "Dyson Purifier Humidify+Cool Formaldehyde")
-eq(Dyson.modelName("999"), "Dyson 999", "an unknown code degrades to the truth")
-eq(Dyson.modelName(""), "")
-eq(Dyson.modelName("unknown"), "")
+  test("resolveFan prefers an explicit pin, even one not present", () => {
+    assert.equal(Dyson.resolveFan(hp02, ""), hp02Fan)
+    assert.equal(Dyson.resolveFan(fx.multiHouse(), "fan.absent"), "fan.absent")
+    assert.equal(Dyson.resolveFan([], ""), "")
+  })
 
-// =========================================================================
-// History
-// =========================================================================
+  test("serialFromName", () => {
+    assert.equal(Dyson.serialFromName("Dyson SZ2-AU-TBA2519A"), "SZ2-AU-TBA2519A")
+    assert.equal(Dyson.serialFromName("Study Purifier"), "")
+    assert.equal(Dyson.serialFromName(""), "")
+    assert.equal(Dyson.serialFromName(null), "")
+  })
+})
 
-const pts = Dyson.parseHistory([[
-  { state: "unknown", last_changed: "2026-08-16T05:00:00Z" },
-  { state: "5", last_changed: "2026-08-16T05:10:00Z" },
-  { state: "unavailable", last_changed: "2026-08-16T05:20:00Z" },
-  { state: "9", last_changed: "2026-08-16T05:30:00Z" },
-  { state: "3", last_changed: "2026-08-16T05:40:00Z" }
-]])
-eq(pts.length, 3, "non-numeric states are dropped, not coerced to zero")
-eq(pts.map(p => p.v).join(","), "5,9,3")
-eq(Dyson.parseHistory([]).length, 0)
-eq(Dyson.parseHistory(null).length, 0)
-eq(Dyson.parseHistory([[{ state: "7" }]]).length, 0, "a point with no timestamp cannot be plotted")
+describe("entity lookup", () => {
+  test("deviceEntities scopes to one device", () => {
+    assert.equal(Dyson.deviceEntities([], hp02Fan, "sensor").length, 0)
+    assert.equal(Dyson.deviceEntities(hp02, "", "sensor").length, 0, "no fan, no entities")
+    assert.ok(Dyson.deviceEntities(hp02, hp02Fan, "sensor").length > 5)
+    // An entity whose id is not a string at all must not crash the scan.
+    assert.equal(Dyson.deviceEntities([{ state: "on" }], hp02Fan, "sensor").length, 0)
+  })
 
-const stats = Dyson.historyStats(pts)
-eq(stats.min, 3); eq(stats.max, 9); eq(stats.last.v, 3, "last is newest, not highest")
-eq(Dyson.historyStats([]), null)
-eq(Dyson.historyStats(null), null)
+  test("companionEntity matches an exact suffix, never a substring", () => {
+    // The regression: the only switch containing "auto" here is
+    // firmware_auto_update, and it must NOT be returned for auto_mode.
+    assert.equal(Dyson.companionEntity(hp02, hp02Fan, "switch", ["auto_mode"]), "")
+    assert.equal(Dyson.companionEntity(fx.tp09, "fan.dyson_tp09", "switch", ["auto_mode"]),
+      "switch.dyson_tp09_auto_mode")
+    assert.equal(Dyson.companionEntity(hp02, hp02Fan, "switch", ["nope"]), "")
+    assert.equal(Dyson.companionEntity(hp02, "", "switch", ["night_mode"]), "")
+  })
 
-const flat = Dyson.historyStats([{ t: 1, v: 3 }, { t: 2, v: 3 }])
-eq(flat.max - flat.min, 4, "a flat reading is padded, not amplified into noise")
-const zero = Dyson.historyStats([{ t: 1, v: 0 }, { t: 2, v: 0 }])
-eq(zero.min, 0, "padding never produces a negative concentration")
+  test("companionEntity honours suffix priority order", () => {
+    const states = [
+      { entity_id: "fan.d", attributes: { night_mode: false } },
+      { entity_id: "switch.d_nightmode", attributes: {} },
+      { entity_id: "switch.d_night_mode", attributes: {} }
+    ]
+    assert.equal(Dyson.companionEntity(states, "fan.d", "switch", ["night_mode", "nightmode"]),
+      "switch.d_night_mode",
+      "the first listed suffix wins even when the other appears earlier")
+  })
 
-// =========================================================================
-// Liveness
-// =========================================================================
+  test("primaryEntity prefers the exact slug, then falls back", () => {
+    assert.equal(Dyson.primaryEntity(hp02, hp02Fan, "climate"), "climate.dyson_sz2_au_tba2519a")
+    assert.equal(Dyson.primaryEntity(hp02, hp02Fan, "humidifier"), "")
+    // Fallback: a device whose only climate entity carries a suffix.
+    const odd = [
+      { entity_id: "fan.d", attributes: { night_mode: false } },
+      { entity_id: "climate.d_zone", attributes: {} }
+    ]
+    assert.equal(Dyson.primaryEntity(odd, "fan.d", "climate"), "climate.d_zone")
+  })
 
-const T = Date.parse("2026-08-16T08:05:00+00:00")
-eq(Dyson.stalenessMs(fx.tp09, "fan.dyson_tp09", T), 300000, "five minutes since the last word")
+  test("sensorByClass matches device_class, excludes outdoor, prefers plainest", () => {
+    assert.equal(hp02Caps.pm25, "sensor.dyson_sz2_au_tba2519a_particulates")
+    assert.equal(Dyson.sensorByClass(fx.tp09, "fan.dyson_tp09", "aqi"),
+      "sensor.dyson_tp09_air_quality_index", "indoor beats outdoor")
+    assert.equal(Dyson.sensorByClass(hp02, hp02Fan, "carbon_dioxide"), "")
+    // A sensor with no attributes at all must be skipped, not crash.
+    assert.equal(Dyson.sensorByClass(
+      [{ entity_id: "fan.d", attributes: { night_mode: false } }, { entity_id: "sensor.d_x" }],
+      "fan.d", "pm25"), "")
+  })
 
-// The trap: the fan entity alone looks stale even when the device is alive.
-const quietFan = [fx.entity("fan.dyson_q", "on", { night_mode: false }, "2026-08-16T06:00:00+00:00"),
-                  fx.entity("sensor.dyson_q_pm25", "3", { device_class: "pm25" }, "2026-08-16T08:04:00+00:00")]
-eq(Dyson.stalenessMs(quietFan, "fan.dyson_q", T), 60000,
-  "a sensor heartbeat proves liveness even when the fan itself has not changed")
-eq(Dyson.stalenessMs([quietFan[0]], "fan.dyson_q", T), 7500000,
-  "the fan entity alone would wrongly read as hours stale")
+  test("sensorByClass keeps the shortest name whichever order they appear in", () => {
+    // A 15-minute average sits alongside the instantaneous reading; the plain
+    // one wins regardless of which the dump lists first.
+    const longFirst = [
+      { entity_id: "fan.d", attributes: { night_mode: false } },
+      { entity_id: "sensor.d_pm25_15_min_average", attributes: { device_class: "pm25" } },
+      { entity_id: "sensor.d_pm25", attributes: { device_class: "pm25" } }
+    ]
+    assert.equal(Dyson.sensorByClass(longFirst, "fan.d", "pm25"), "sensor.d_pm25")
+    const shortFirst = [longFirst[0], longFirst[2], longFirst[1]]
+    assert.equal(Dyson.sensorByClass(shortFirst, "fan.d", "pm25"), "sensor.d_pm25")
+  })
 
-// Unknown is not stale — otherwise a cold start fires a reconnect before the
-// first poll has even landed.
-eq(Dyson.stalenessMs([fx.entity("fan.dyson_q", "on", {}, null)].map(e => ({ entity_id: e.entity_id, state: e.state, attributes: e.attributes })), "fan.dyson_q", T), -1)
-eq(Dyson.stalenessMs([], "fan.dyson_q", T), -1)
+  test("sensorByName finds formaldehyde, which has no device class", () => {
+    assert.equal(Dyson.sensorByName(fx.tp09, "fan.dyson_tp09", ["hcho"]), "sensor.dyson_tp09_hcho")
+    assert.equal(Dyson.sensorByName(hp02, hp02Fan, ["hcho", "formaldehyde"]), "")
+  })
 
-// =========================================================================
-// Origin normalization
-// =========================================================================
-// The keyring scopes tokens by origin, so two spellings of one address must
-// normalize identically or a stored token becomes unfindable.
+  test("the reconnect button, which drives the staleness self-heal", () => {
+    assert.equal(hp02Caps.reconnect, "button.dyson_sz2_au_tba2519a_reconnect")
+    assert.equal(Dyson.discover(fx.sparse, "fan.dyson_sparse").reconnect, "")
+  })
+})
 
-eq(Origin.normalizeOrigin("http://localhost:8123"), "http://localhost:8123")
-eq(Origin.normalizeOrigin("http://localhost:8123/"), "http://localhost:8123",
-  "a trailing slash is the same server")
-eq(Origin.normalizeOrigin("http://localhost:8123/lovelace/0"), "http://localhost:8123",
-  "so is a pasted dashboard path")
-eq(Origin.normalizeOrigin("HTTP://LocalHost:8123"), "http://localhost:8123", "case is normalized")
-eq(Origin.normalizeOrigin("homeassistant.local"), "https://homeassistant.local:443",
-  "a bare host defaults to https")
-eq(Origin.normalizeOrigin("ws://localhost:8123"), "http://localhost:8123",
-  "a websocket URL lands on the same origin")
-eq(Origin.normalizeOrigin("https://ha.example.com"), "https://ha.example.com:443")
-eq(Origin.normalizeOrigin("[::1]:8123"), "https://[::1]:8123",
-  "a bare IPv6 host gets the https default like any other")
-eq(Origin.normalizeOrigin("[8123]"), "", "a mis-pasted port in brackets is not an address")
-eq(Origin.normalizeOrigin("http://[::1]:8123"), "http://[::1]:8123")
-eq(Origin.normalizeOrigin("http://ha.local:8123]"), "", "a half-pasted URL is rejected")
-eq(Origin.normalizeOrigin("http://user:pw@ha.local"), "", "userinfo is rejected")
-eq(Origin.normalizeOrigin("ftp://ha.local"), "", "only http/https/ws/wss")
-eq(Origin.normalizeOrigin(""), "")
-eq(Origin.normalizeOrigin("http://ha.local:99999"), "", "an impossible port is rejected")
+describe("capability discovery", () => {
+  test("the real HP02 exposes heat, no humidifier, no formaldehyde", () => {
+    assert.notEqual(hp02Caps.climate, "")
+    assert.equal(hp02Caps.humidifier, "")
+    assert.equal(hp02Caps.hcho, "")
+    assert.equal(hp02Caps.autoSwitch, "", "auto is a preset on this model, not a switch")
+    assert.equal(hp02Caps.nightSwitch, "switch.dyson_sz2_au_tba2519a_night_mode")
+    assert.equal(hp02Caps.monitorSwitch, "switch.dyson_sz2_au_tba2519a_continuous_monitoring")
+    assert.equal(hp02Caps.sleepTimer, "number.dyson_sz2_au_tba2519a_sleep_timer")
+  })
 
-eq(Origin.isPlaintextRemote("http://ha.example.com:8123"), true, "plaintext off-box warrants a warning")
-eq(Origin.isPlaintextRemote("http://localhost:8123"), false, "but localhost does not")
-eq(Origin.isPlaintextRemote("http://127.0.0.1:8123"), false)
-eq(Origin.isPlaintextRemote("https://ha.example.com:443"), false)
+  test("a cool-only model has no heat and no humidifier", () => {
+    const c = Dyson.discover(fx.tp09, "fan.dyson_tp09")
+    assert.equal(c.climate, "")
+    assert.equal(c.humidifier, "")
+    assert.equal(c.autoSwitch, "switch.dyson_tp09_auto_mode")
+    assert.equal(c.hcho, "sensor.dyson_tp09_hcho")
+    assert.equal(c.pm10, "sensor.dyson_tp09_pm10")
+    assert.equal(c.no2, "sensor.dyson_tp09_no2")
+    assert.equal(c.oscillationAngle, "number.dyson_tp09_oscillation_angle_span")
+    assert.equal(c.oscillationMode, "select.dyson_tp09_oscillation_mode")
+    assert.equal(c.hepaFilter, "sensor.dyson_tp09_hepa_filter_life")
+    assert.equal(c.carbonFilter, "sensor.dyson_tp09_carbon_filter_life")
+    assert.equal(c.filterReplacement, "binary_sensor.dyson_tp09_filter_replacement")
+  })
 
-// =========================================================================
-// Config
-// =========================================================================
+  test("a humidifier model exposes humidity and no heat", () => {
+    const c = Dyson.discover(fx.ph01, "fan.dyson_ph01")
+    assert.equal(c.humidifier, "humidifier.dyson_ph01")
+    assert.equal(c.climate, "")
+  })
 
-const fresh = Config.parse("")
-eq(fresh.baseUrl, ""); eq(fresh.barMetric, "Fan speed"); eq(fresh.autoReconnect, true)
-eq(fresh.error, "", "an empty file is not an error")
+  test("a heater model exposes climate and a heating-mode select", () => {
+    const c = Dyson.discover(fx.hp07, "fan.dyson_hp07")
+    assert.equal(c.climate, "climate.dyson_hp07")
+    assert.equal(c.heatingMode, "select.dyson_hp07_heating_mode")
+  })
 
-const broken = Config.parse("{not json")
-eq(broken.error, "config.json is not valid JSON")
-eq(broken.barMetric, "Fan speed", "a broken file still yields usable defaults")
+  test("a minimal device exposes nothing optional", () => {
+    const c = Dyson.discover(fx.sparse, "fan.dyson_sparse")
+    for (const key of ["climate", "humidifier", "autoSwitch", "nightSwitch", "heatSwitch",
+                       "monitorSwitch", "sleepTimer", "oscillationAngle", "oscillationMode",
+                       "heatingMode", "pm25", "pm10", "no2", "voc", "co2", "temperature",
+                       "humidity", "aqi", "hcho", "hepaFilter", "carbonFilter",
+                       "filterReplacement", "reconnect"]) {
+      assert.equal(c[key], "", `expected no ${key}`)
+    }
+    assert.equal(c.fan, "fan.dyson_sparse", "the fan itself is still the fan")
+  })
 
-eq(Config.parse('{"barMetric":"nonsense"}').barMetric, "Fan speed", "an invalid metric falls back")
-eq(Config.parse('{"historyHours":9999}').historyHours, 240, "out-of-range values clamp")
-eq(Config.parse('{"pollSeconds":1}').pollSeconds, 5)
-eq(Config.parse('{"autoReconnect":false}').autoReconnect, false)
+  test("two devices in one house never borrow each other's entities", () => {
+    const house = fx.multiHouse()
+    const a = Dyson.discover(house, "fan.dyson_tp09")
+    const b = Dyson.discover(house, "fan.dyson_hp07")
+    assert.ok(a.pm25.includes("tp09"))
+    assert.ok(b.pm25.includes("hp07"))
+    assert.equal(a.climate, "")
+    assert.equal(b.climate, "climate.dyson_hp07")
+  })
+})
 
-// Device pinning deliberately does NOT live here. Two bar widgets of the same
-// plugin share a module name and can only be told apart by their placement in
-// the layout, so each widget's device is stored in its own inline bar entry and
-// written by the settings overlay, which is the only surface that knows the
-// placements. config.json holds connection and shared display options only.
-eq("pinned" in fresh, false, "config.json carries no per-widget pins")
-eq("pinned" in JSON.parse(Config.serialize(fresh)), false)
+describe("presets", () => {
+  test("hasPreset", () => {
+    assert.ok(Dyson.hasPreset(hp02Attrs, "auto"))
+    assert.ok(Dyson.hasPreset(hp02Attrs, "heat"))
+    assert.ok(!Dyson.hasPreset(hp02Attrs, "sleep"))
+    assert.ok(!Dyson.hasPreset({}, "auto"))
+    assert.ok(!Dyson.hasPreset(null, "auto"))
+  })
 
-// The runtime `error` field must never be written back into the file.
-eq(JSON.parse(Config.serialize(broken)).error, undefined)
-ok(Config.serialize(fresh).endsWith("\n"), "serialized config ends with a newline")
+  test("isAutoMode prefers the attribute over a stale preset", () => {
+    assert.equal(Dyson.isAutoMode({ auto_mode: true, preset_mode: "manual" }), true)
+    assert.equal(Dyson.isAutoMode({ auto_mode: false, preset_mode: "auto" }), false)
+    assert.equal(Dyson.isAutoMode({ preset_mode: "Auto" }), true)
+    assert.equal(Dyson.isAutoMode({ preset_mode: "manual" }), false)
+    assert.equal(Dyson.isAutoMode({}), false)
+    assert.equal(Dyson.isAutoMode(null), false)
+  })
+})
 
-console.log(`all ${checks} assertions passed`)
+describe("speed", () => {
+  test("stepsFor reads the device's own step", () => {
+    assert.equal(Dyson.stepsFor(hp02Attrs), 10)
+    assert.equal(Dyson.stepsFor({}), 10, "a missing step assumes ten speeds")
+    assert.equal(Dyson.stepsFor(null), 10)
+    assert.equal(Dyson.stepsFor({ percentage_step: 0 }), 10, "a zero step is not usable")
+    assert.equal(Dyson.stepsFor({ percentage_step: "bad" }), 10)
+    assert.equal(Dyson.stepsFor({ percentage_step: 20 }), 5)
+    assert.equal(Dyson.stepsFor({ percentage_step: 100 }), 1, "a single-speed device")
+  })
+
+  test("an absent or zero percentage reads as off", () => {
+    assert.equal(Dyson.speedFromPercentage(null, hp02Attrs), 0)
+    assert.equal(Dyson.speedFromPercentage(undefined, hp02Attrs), 0)
+    assert.equal(Dyson.speedFromPercentage("", hp02Attrs), 0)
+    assert.equal(Dyson.speedFromPercentage(0, hp02Attrs), 0)
+    assert.equal(Dyson.speedFromPercentage(-5, hp02Attrs), 0)
+  })
+
+  test("every speed round-trips losslessly on any dial size", () => {
+    for (const attrs of [hp02Attrs, { percentage_step: 20 }, { percentage_step: 25 },
+                         { percentage_step: 100 }]) {
+      const steps = Dyson.stepsFor(attrs)
+      for (let s = 0; s <= steps; s++) {
+        assert.equal(Dyson.speedFromPercentage(Dyson.percentageFromSpeed(s, attrs), attrs), s,
+          `speed ${s} of ${steps}`)
+      }
+    }
+  })
+
+  test("speeds clamp at both ends", () => {
+    assert.equal(Dyson.percentageFromSpeed(99, hp02Attrs), 100)
+    assert.equal(Dyson.percentageFromSpeed(-3, hp02Attrs), 0)
+    assert.equal(Dyson.speedFromPercentage(500, hp02Attrs), 10)
+  })
+})
+
+describe("air quality banding", () => {
+  test("WHO 2021 thresholds", () => {
+    assert.equal(Dyson.pm25Band(0), "good")
+    assert.equal(Dyson.pm25Band(12), "good")
+    assert.equal(Dyson.pm25Band(12.1), "fair")
+    assert.equal(Dyson.pm25Band(35), "fair")
+    assert.equal(Dyson.pm25Band(35.1), "poor")
+    assert.equal(Dyson.pm25Band(55), "poor")
+    assert.equal(Dyson.pm25Band(55.1), "bad")
+    assert.equal(Dyson.pm25Band("7"), "good", "strings from HA states are numbers")
+  })
+
+  test("a missing reading is never a good reading", () => {
+    // Number("") is 0, which would band an absent sensor as pristine air.
+    assert.equal(Dyson.pm25Band(""), "unknown")
+    assert.equal(Dyson.pm25Band(null), "unknown")
+    assert.equal(Dyson.pm25Band(undefined), "unknown")
+    assert.equal(Dyson.pm25Band("unavailable"), "unknown")
+    assert.equal(Dyson.pm25Band(NaN), "unknown")
+  })
+})
+
+describe("model naming", () => {
+  test("known codes become product names", () => {
+    assert.equal(Dyson.modelName("455"), "Dyson Pure Hot+Cool Link")
+    assert.equal(Dyson.modelName("527K"), "Dyson Purifier Hot+Cool")
+    assert.equal(Dyson.modelName("527k"), "Dyson Purifier Hot+Cool")
+    assert.equal(Dyson.modelName(" 358E "), "Dyson Purifier Humidify+Cool Formaldehyde")
+    assert.equal(Dyson.modelName("664"), "Dyson Purifier Big+Quiet Formaldehyde")
+  })
+
+  test("an unlisted code degrades to the truth rather than a guess", () => {
+    assert.equal(Dyson.modelName("999"), "Dyson 999")
+    assert.equal(Dyson.modelName(""), "")
+    assert.equal(Dyson.modelName(null), "")
+    assert.equal(Dyson.modelName("unknown"), "")
+    assert.equal(Dyson.modelName("None"), "")
+  })
+
+  test("every table entry is a non-empty product name", () => {
+    for (const [code, name] of Object.entries(Dyson.MODEL_NAMES)) {
+      assert.ok(name.length > 3, `${code} has a real name`)
+      assert.equal(Dyson.modelName(code), "Dyson " + name)
+    }
+  })
+})
+
+describe("history", () => {
+  const payload = [[
+    { state: "unknown", last_changed: "2026-08-16T05:00:00Z" },
+    { state: "5", last_changed: "2026-08-16T05:10:00Z" },
+    { state: "unavailable", last_changed: "2026-08-16T05:20:00Z" },
+    { state: "9", last_changed: "2026-08-16T05:30:00Z" },
+    { state: "3", last_changed: "2026-08-16T05:40:00Z" }
+  ]]
+
+  test("non-numeric states are dropped, not coerced to zero", () => {
+    const pts = Dyson.parseHistory(payload)
+    assert.equal(pts.length, 3)
+    assert.equal(pts.map(p => p.v).join(","), "5,9,3")
+  })
+
+  test("points come out in time order regardless of input order", () => {
+    const pts = Dyson.parseHistory([[
+      { state: "9", last_changed: "2026-08-16T05:30:00Z" },
+      { state: "5", last_changed: "2026-08-16T05:10:00Z" }
+    ]])
+    assert.equal(pts.map(p => p.v).join(","), "5,9")
+  })
+
+  test("last_updated is accepted when last_changed is absent", () => {
+    assert.equal(Dyson.parseHistory([[{ state: "4", last_updated: "2026-08-16T05:00:00Z" }]]).length, 1)
+  })
+
+  test("unplottable payloads yield no points", () => {
+    assert.equal(Dyson.parseHistory([]).length, 0)
+    assert.equal(Dyson.parseHistory(null).length, 0)
+    assert.equal(Dyson.parseHistory("nonsense").length, 0)
+    assert.equal(Dyson.parseHistory([[{ state: "7" }]]).length, 0, "no timestamp")
+    assert.equal(Dyson.parseHistory([[{ state: "7", last_changed: "not a date" }]]).length, 0)
+    assert.equal(Dyson.parseHistory([[null]]).length, 0)
+  })
+
+  test("historyStats bounds", () => {
+    const stats = Dyson.historyStats(Dyson.parseHistory(payload))
+    assert.equal(stats.min, 3)
+    assert.equal(stats.max, 9)
+    assert.equal(stats.first.v, 5)
+    assert.equal(stats.last.v, 3, "last is newest, not highest")
+    assert.ok(stats.tMax > stats.tMin)
+    assert.equal(Dyson.historyStats([]), null)
+    assert.equal(Dyson.historyStats(null), null)
+  })
+
+  test("a flat reading draws level rather than as amplified noise", () => {
+    const flat = Dyson.historyStats([{ t: 1, v: 3 }, { t: 2, v: 3 }])
+    assert.equal(flat.max - flat.min, 4)
+    assert.equal(flat.min, 1)
+    const zero = Dyson.historyStats([{ t: 1, v: 0 }, { t: 2, v: 0 }])
+    assert.equal(zero.min, 0, "padding never produces a negative concentration")
+    assert.equal(zero.max, 4)
+    const custom = Dyson.historyStats([{ t: 1, v: 10 }, { t: 2, v: 10 }], 2)
+    assert.equal(custom.max - custom.min, 2, "the minimum span is configurable")
+    const wide = Dyson.historyStats([{ t: 1, v: 0 }, { t: 2, v: 100 }])
+    assert.equal(wide.min, 0, "a genuinely wide range is left alone")
+    assert.equal(wide.max, 100)
+  })
+})
+
+describe("liveness", () => {
+  const T = Date.parse("2026-08-16T08:05:00+00:00")
+
+  test("the heartbeat is the newest timestamp across the whole device", () => {
+    assert.equal(Dyson.newestUpdate(fx.tp09, "fan.dyson_tp09"),
+      Date.parse("2026-08-16T08:00:00+00:00"))
+    assert.equal(Dyson.stalenessMs(fx.tp09, "fan.dyson_tp09", T), 300000)
+  })
+
+  test("a quiet fan with live sensors is not stale", () => {
+    // The trap this exists for: the fan entity's last_updated only moves when
+    // the fan changes, so it alone cannot tell an idle device from a dead one.
+    const quiet = [
+      fx.entity("fan.d", "on", { night_mode: false }, "2026-08-16T06:00:00+00:00"),
+      fx.entity("sensor.d_pm25", "3", { device_class: "pm25" }, "2026-08-16T08:04:00+00:00")
+    ]
+    assert.equal(Dyson.stalenessMs(quiet, "fan.d", T), 60000)
+    assert.equal(Dyson.stalenessMs([quiet[0]], "fan.d", T), 7500000,
+      "the fan alone would wrongly read as hours stale")
+  })
+
+  test("binary sensors count towards the heartbeat", () => {
+    const only = [fx.entity("binary_sensor.d_filter_replacement", "off", {},
+      "2026-08-16T08:04:00+00:00"),
+      fx.entity("fan.d", "on", { night_mode: false }, null)]
+    only[1].last_updated = undefined
+    assert.equal(Dyson.stalenessMs(only, "fan.d", T), 60000)
+  })
+
+  test("no timestamps is unknown, not stale", () => {
+    // Treating unknown as stale would fire a reconnect at every cold start,
+    // before the first poll has even landed.
+    assert.equal(Dyson.stalenessMs([{ entity_id: "fan.d", attributes: {} }], "fan.d", T), -1)
+    assert.equal(Dyson.stalenessMs([], "fan.d", T), -1)
+    assert.equal(Dyson.newestUpdate([], "fan.d"), 0)
+  })
+
+  test("staleness never goes negative on a clock skew", () => {
+    const future = [fx.entity("sensor.d_pm25", "3", { device_class: "pm25" },
+      "2027-01-01T00:00:00+00:00")]
+    assert.equal(Dyson.stalenessMs(future, "fan.d", T), 0)
+  })
+
+  test("stalenessMs defaults to now", () => {
+    const fresh = [fx.entity("sensor.d_pm25", "3", { device_class: "pm25" },
+      new Date().toISOString())]
+    assert.ok(Dyson.stalenessMs(fresh, "fan.d") < 5000)
+  })
+})

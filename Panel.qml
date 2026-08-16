@@ -5,6 +5,7 @@ import Quickshell.Io
 import qs.Ui
 import qs.Commons
 import "Dyson.js" as Dyson
+import "View.js" as View
 
 // Bar button plus dropdown panel for one Dyson air treatment device.
 //
@@ -258,40 +259,40 @@ Panel {
 
   // --- bar button ---------------------------------------------------------
 
+  // The single model every view decision reads. Built once so the bar label,
+  // tooltip, hero text and section visibility cannot drift apart.
+  readonly property var viewModel: ({
+    hasService: !!service,
+    configured: !!service && service.configured,
+    everLoaded: !!service && service.everLoaded,
+    lastError: service ? service.lastError : "",
+    ready: !!service && service.ready,
+    actionable: actionable,
+    fanEntity: fanEntity, title: title, fans: fans, pinnedFan: pinnedFan,
+    barMetric: barMetric, fanOn: fanOn, speed: speed, maxSpeed: maxSpeed,
+    stale: stale, staleMs: staleMs, autoReconnect: autoReconnect,
+    heating: heating, targetTemp: targetTemp, currentTemp: currentTemp,
+    climateEntity: caps.climate || "", hvacModes: hvacModes,
+    humidifierEntity: caps.humidifier || "", humidifying: humidifying,
+    nightSwitch: caps.nightSwitch || "", autoSupported: autoSupported,
+    filterDue: filterDue, historyPoints: historyPoints.length,
+    pm25: pm25, pm10: pm10, voc: voc, no2: no2, co2: co2, hcho: hcho,
+    aqi: aqi, humidity: humidity, hepaFilter: hepaFilter
+  })
+  readonly property var view: View.sections(viewModel)
+
   readonly property string pmBand: Dyson.pm25Band(pm25)
   readonly property color pmColor: {
-    switch (pmBand) {
-    case "fair": return Color.accent
-    case "poor": return Color.urgent
-    case "bad": return Color.urgent
+    switch (View.bandColorKey(pmBand)) {
+    case "accent": return Color.accent
+    case "urgent": return Color.urgent
     }
     return bar ? bar.barForeground : Color.foreground
   }
 
-  readonly property string barLabel: {
-    var icon = "󰈐"
-    if (stale) return icon
-    if (barMetric === "Fan speed") return fanOn && speed > 0 ? icon + "  " + speed : icon
-    if (barMetric === "PM2.5" && pm25 !== "") return icon + "  " + pm25
-    return icon
-  }
+  readonly property string barLabel: View.barLabel(viewModel)
 
-  readonly property string statusLine: {
-    if (!service) return "Dyson Air: starting up"
-    if (!service.configured) return "Dyson Air: not connected — click to set up"
-    if (service.lastError !== "") return "Dyson Air: " + service.lastError
-    if (!service.everLoaded) return "Dyson Air: connecting"
-    if (fanEntity === "") return "Dyson Air: no Dyson found in Home Assistant"
-    if (stale) return title + " — no data for " + Math.round(staleMs / 60000)
-      + " min; Home Assistant lost the device" + (autoReconnect ? ", reconnecting" : "")
-    var parts = [title]
-    if (!fanOn) parts.push("off")
-    else if (heating) parts.push("heating to " + Math.round(targetTemp) + "°C · speed " + speed)
-    else parts.push("on · speed " + speed)
-    if (isFinite(currentTemp)) parts.push(currentTemp.toFixed(1) + "°C")
-    if (pm25 !== "") parts.push("PM2.5 " + pm25 + " µg/m³")
-    return parts.join(" — ")
-  }
+  readonly property string statusLine: View.statusLine(viewModel)
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -301,11 +302,11 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     text: root.barLabel
-    active: root.fanOn && !root.stale
+    active: View.barActive(root.viewModel)
     // Stale reads as broken on purpose: the numbers are still there, but they
     // describe the past. Presenting them at full strength is what makes a
     // widget claim a device is off while it is plainly running.
-    dimmed: !root.actionable || root.stale
+    dimmed: View.barDimmed(root.viewModel)
     tooltipText: root.statusLine
     onPressed: function(b) {
       if (b === Qt.MiddleButton) root.togglePower()
@@ -374,7 +375,7 @@ Panel {
                 from: 0; to: 360
                 // Slowest speed turns once every 3s, fastest every ~0.35s:
                 // fast enough to read the dial at a glance without nagging.
-                duration: Math.max(350, 3000 - (root.speed - 1) * (2650 / Math.max(1, root.maxSpeed - 1)))
+                duration: View.spinDurationMs(root.speed, root.maxSpeed)
                 loops: Animation.Infinite
               }
               onRotationChanged: if (!root.fanOn) rotation = 0
@@ -400,17 +401,7 @@ Panel {
 
               Text {
                 width: parent.width
-                text: {
-                  if (!root.service || !root.service.configured) return "Not connected"
-                  if (root.service.lastError !== "") return root.service.lastError
-                  if (root.fanEntity === "") return "No Dyson found"
-                  if (root.stale) return "No data for " + Math.round(root.staleMs / 60000)
-                    + " min" + (root.autoReconnect ? " · reconnecting" : "")
-                  var s = root.fanOn ? "On · speed " + root.speed + " of " + root.maxSpeed : "Off"
-                  if (root.heating) s = "Heating · speed " + root.speed
-                  if (isFinite(root.currentTemp)) s += " · " + root.currentTemp.toFixed(1) + "°C"
-                  return s
-                }
+                text: View.heroSubtitle(root.viewModel)
                 color: root.bar.foreground
                 opacity: 0.6
                 font.family: root.bar.fontFamily
@@ -436,18 +427,11 @@ Panel {
           // its own settings.
           ButtonGroup {
             width: parent.width
-            visible: root.fans.length > 1 && root.pinnedFan === ""
+            visible: root.view.deviceSwitcher
             foreground: root.bar.foreground
             background: root.bar.background
             fontFamily: root.bar.fontFamily
-            options: {
-              var out = []
-              for (var i = 0; i < root.fans.length; i++) {
-                var f = root.fans[i]
-                out.push({ value: f.entityId, label: f.serial || f.name })
-              }
-              return out
-            }
+            options: View.deviceOptions(root.fans, false)
             value: root.fanEntity
             onChanged: function(v) { root.overrideFan = v }
           }
@@ -461,26 +445,18 @@ Panel {
             text: "Mode"
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
-            visible: root.hasClimate
+            visible: root.view.climate
           }
 
           ButtonGroup {
             width: parent.width
-            visible: root.hasClimate
+            visible: root.view.climate
             enabled: root.actionable
             opacity: root.actionable ? 1 : 0.4
             foreground: root.bar.foreground
             background: root.bar.background
             fontFamily: root.bar.fontFamily
-            options: {
-              var out = []
-              for (var i = 0; i < root.hvacModes.length; i++) {
-                var m = String(root.hvacModes[i])
-                var label = m === "fan_only" ? "Fan" : (m === "heat" ? "Heat" : "Off")
-                out.push({ value: m, label: label })
-              }
-              return out
-            }
+            options: View.hvacOptions(root.hvacModes)
             value: root.hvacMode
             onChanged: function(v) { root.setHvacMode(v) }
           }
@@ -490,7 +466,7 @@ Panel {
             label: "Power"
             description: "Turn the device on or off"
             checked: root.fanOn
-            visible: !root.hasClimate
+            visible: root.view.powerToggle
             enabled: root.actionable
             opacity: root.actionable ? 1 : 0.4
             foreground: root.bar.foreground
@@ -509,9 +485,7 @@ Panel {
 
           PanelSlider {
             width: parent.width
-            // Only while heating: a target temperature on a device blowing
-            // cold air is a control with no effect to observe.
-            visible: root.heating
+            visible: root.view.targetTemp
             bar: root.bar
             enabled: root.actionable
             minimum: root.minTemp; maximum: root.maxTemp
@@ -526,7 +500,7 @@ Panel {
             text: "Humidity — target " + Math.round(root.targetHumidity) + "%"
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
-            visible: root.hasHumidifier
+            visible: root.view.humidifier
           }
 
           Toggle {
@@ -534,7 +508,7 @@ Panel {
             label: "Humidify"
             description: root.humidity !== "" ? "Room is at " + root.humidity + "%" : "Add moisture to the air"
             checked: root.humidifying
-            visible: root.hasHumidifier
+            visible: root.view.humidifier
             enabled: root.actionable
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
@@ -543,7 +517,7 @@ Panel {
 
           PanelSlider {
             width: parent.width
-            visible: root.hasHumidifier && root.humidifying
+            visible: root.view.humiditySlider
             bar: root.bar
             enabled: root.actionable
             minimum: root.minHumidity; maximum: root.maxHumidity
@@ -599,7 +573,7 @@ Panel {
             label: "Night mode"
             description: "Quiet running, display dimmed"
             checked: root.nightMode
-            visible: root.caps.nightSwitch !== undefined && root.caps.nightSwitch !== ""
+            visible: root.view.nightMode
             enabled: root.actionable
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
@@ -611,7 +585,7 @@ Panel {
             label: "Auto mode"
             description: "Let the device follow air quality"
             checked: root.autoMode
-            visible: root.autoSupported
+            visible: root.view.autoMode
             enabled: root.actionable
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
@@ -624,7 +598,7 @@ Panel {
             text: "Air quality"
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
-            visible: readings.hasAny
+            visible: root.view.airQuality
           }
 
           // PM2.5 over the last `historyHours`, the way the Dyson app plots it.
@@ -633,7 +607,7 @@ Panel {
           Item {
             width: parent.width
             implicitHeight: Style.space(78)
-            visible: root.historyPoints.length > 1
+            visible: root.view.graph
 
             Canvas {
               id: graph
@@ -709,24 +683,8 @@ Panel {
             columnSpacing: Style.space(10)
             rowSpacing: Style.space(6)
 
-            readonly property var entries: {
-              var out = []
-              function add(label, value, unit, band) {
-                if (value !== "") out.push({ label: label, value: value, unit: unit, band: !!band })
-              }
-              add("PM2.5", root.pm25, "µg/m³", true)
-              add("PM10", root.pm10, "µg/m³", false)
-              add("VOC", root.voc, "", false)
-              add("NO₂", root.no2, "", false)
-              add("HCHO", root.hcho, "mg/m³", false)
-              add("CO₂", root.co2, "ppm", false)
-              add("AQI", root.aqi, "", false)
-              add("Humidity", root.humidity, "%", false)
-              add("Filter", root.hepaFilter, "%", false)
-              return out
-            }
-            readonly property bool hasAny: entries.length > 0
-            visible: hasAny
+            readonly property var entries: View.readings(root.viewModel)
+            visible: root.view.airQuality
 
             Repeater {
               model: readings.entries
@@ -747,7 +705,7 @@ Panel {
                 Text {
                   id: readingValue
                   anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                  text: parent.modelData.value + (parent.modelData.unit ? " " + parent.modelData.unit : "")
+                  text: View.readingText(parent.modelData)
                   // Only PM2.5 is banded. The others have no comparably settled
                   // thresholds, so colouring them would imply a judgement this
                   // widget cannot actually make.
@@ -760,7 +718,7 @@ Panel {
 
           Text {
             width: parent.width
-            visible: root.filterDue
+            visible: root.view.filterWarning
             text: "󰀪  Filter needs replacing"
             color: Color.urgent
             font.family: root.bar.fontFamily

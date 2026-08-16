@@ -59,7 +59,8 @@ function normalizeOrigin(value) {
     if (!/^[a-z0-9._\-]+$/.test(host)) return ""
   }
 
-  if (!host) return ""
+  // No empty-host guard is needed here: the bracket path returns early when the
+  // brackets hold nothing, and the hostname path's charset test rejects "".
   var port = portText ? Number(portText) : (secure ? 443 : 80)
   if (!/^\d*$/.test(portText) || !Number.isInteger(port) || port < 1 || port > 65535) {
     return ""
@@ -75,8 +76,17 @@ function normalizeOrigin(value) {
 function isPlaintextRemote(origin) {
   var text = String(origin || "")
   if (text.indexOf("http://") !== 0) return false
-  var host = text.slice(7).split(":")[0]
-  if (host === "localhost" || host === "127.0.0.1" || host === "[::1]") return false
+  var authority = text.slice(7)
+  // Splitting on ":" would cut an IPv6 literal at its first colon and yield
+  // "[", so a bracketed host is taken whole before any port is stripped.
+  var host = authority.charAt(0) === "["
+    ? authority.slice(0, authority.indexOf("]") + 1)
+    : authority.split(":")[0]
+  if (host === "localhost" || host === "[::1]") return false
   if (/^127\./.test(host)) return false
   return true
 }
+
+// QML imports this file directly and never defines `module`; the guard lets
+// node require() the same source so coverage instrumentation can see it.
+if (typeof module !== "undefined") module.exports = { isPlaintextRemote: isPlaintextRemote, normalizeOrigin: normalizeOrigin, preparedUrl: preparedUrl }

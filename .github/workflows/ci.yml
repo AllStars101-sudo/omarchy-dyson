@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests and coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run tests
+        run: node --test tests/
+
+      - name: Coverage
+        run: |
+          node --experimental-test-coverage \
+               --test-reporter=lcov --test-reporter-destination=lcov.info \
+               --test-reporter=spec --test-reporter-destination=stdout \
+               --test tests/*.test.js
+
+      # The plugin ships no dependencies, so a coverage gate is enforced here
+      # rather than through a third-party service. The logic layer is fully
+      # testable and has no excuse for gaps; QML is checked separately below.
+      - name: Enforce 100% coverage of the logic layer
+        run: node scripts/check-coverage.js lcov.info
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lcov
+          path: lcov.info
+
+  qml:
+    name: QML and manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install qmllint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qt6-declarative-dev-tools
+
+      - name: Structural check
+        run: QMLLINT=$(command -v qmllint6 || command -v qmllint) ./scripts/check-qml.sh
+
+  package:
+    name: Marketplace requirements
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The marketplace validates repository shape at submission time; failing
+      # here instead means a broken listing is never submitted.
+      - name: Required files
+        run: |
+          set -e
+          for f in manifest.json README.md LICENSE THIRD_PARTY_NOTICES.md; do
+            [ -f "$f" ] || { echo "missing required file: $f"; exit 1; }
+          done
+          grep -q "## Install" README.md || { echo "README needs install instructions"; exit 1; }
+          grep -q "## Remove" README.md || { echo "README needs removal instructions"; exit 1; }
+          grep -q "Konrad Kruk" THIRD_PARTY_NOTICES.md || { echo "attribution missing"; exit 1; }
+          echo "packaging ok"

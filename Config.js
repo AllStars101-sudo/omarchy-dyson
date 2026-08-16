@@ -21,6 +21,10 @@ function isPlainObject(value) {
 }
 
 function boundedInt(value, fallback, min, max) {
+  // Number(null) is 0 and Number("") is 0, both finite — so coercing first
+  // would silently clamp a missing value to the minimum instead of falling
+  // back to the default. Reject the blanks before touching Number().
+  if (value === null || value === undefined || value === "") return fallback
   var n = Number(value)
   if (!isFinite(n)) return fallback
   return Math.max(min, Math.min(max, Math.round(n)))
@@ -68,3 +72,7 @@ function serialize(config) {
   for (var key in DEFAULTS) out[key] = config && key in config ? config[key] : DEFAULTS[key]
   return JSON.stringify(out, null, 2) + "\n"
 }
+
+// QML imports this file directly and never defines `module`; the guard lets
+// node require() the same source so coverage instrumentation can see it.
+if (typeof module !== "undefined") module.exports = { boundedInt: boundedInt, isPlainObject: isPlainObject, merge: merge, parse: parse, serialize: serialize, DEFAULTS: DEFAULTS }
