@@ -20,7 +20,8 @@ Panel {
   ipcTarget: "dyson-air"
 
   readonly property var service: bar && bar.shell ? bar.shell.serviceFor(root.moduleName) : null
-  readonly property var states: service ? service.states : []
+  // Named entityStates, not states: QQuickItem already defines `states`.
+  readonly property var entityStates: service ? service.entityStates : []
   readonly property var config: service ? service.config : ({})
 
   // Which device this particular widget shows. Stored inline on this bar entry
@@ -37,19 +38,19 @@ Panel {
 
   // --- resolved device ----------------------------------------------------
 
-  readonly property var fans: states.length ? Dyson.listFans(states) : []
+  readonly property var fans: entityStates.length ? Dyson.listFans(entityStates) : []
   readonly property string fanEntity: {
     if (overrideFan) return overrideFan
     if (pinnedFan) return pinnedFan
-    return Dyson.resolveFan(states, "")
+    return Dyson.resolveFan(entityStates, "")
   }
-  readonly property var caps: fanEntity && states.length
-    ? Dyson.discover(states, fanEntity) : ({})
+  readonly property var caps: fanEntity && entityStates.length
+    ? Dyson.discover(entityStates, fanEntity) : ({})
 
   function stateOf(entityId) {
     if (!entityId) return null
-    for (var i = 0; i < states.length; i++)
-      if (states[i].entity_id === entityId) return states[i]
+    for (var i = 0; i < entityStates.length; i++)
+      if (entityStates[i].entity_id === entityId) return entityStates[i]
     return null
   }
 
@@ -118,6 +119,9 @@ Panel {
   readonly property string aqi: numberOf(caps.aqi)
   readonly property string humidity: numberOf(caps.humidity)
   readonly property string hepaFilter: numberOf(caps.hepaFilter)
+  // The single colour exception: PM2.5 past the WHO guideline.
+  readonly property bool airAlarm: Dyson.airQualityAlarm(pm25)
+
   readonly property bool filterDue: (stateOf(caps.filterReplacement) || {}).state === "on"
 
   property string modelName: ""
@@ -127,21 +131,21 @@ Panel {
 
   property real staleMs: -1
   property real lastReconnectAt: 0
-  readonly property bool stale: staleMs >= 0 && staleMs > staleSeconds * 1000
+  readonly property bool stale: Dyson.isStale(staleMs, staleSeconds)
 
   function refreshLiveness() {
-    if (!fanEntity || !states.length) { staleMs = -1; return }
-    staleMs = Dyson.stalenessMs(states, fanEntity)
-    if (!autoReconnect || !stale || !caps.reconnect || !service || !service.ready) return
-    // Rate-limited: a reconnect takes seconds to settle, and hammering the
-    // button would keep tearing down the session it is rebuilding.
+    if (!fanEntity || !entityStates.length) { staleMs = -1; return }
+    staleMs = Dyson.stalenessMs(entityStates, fanEntity)
     var now = Date.now()
-    if (now - lastReconnectAt < 120000) return
+    if (!Dyson.shouldReconnect({
+      enabled: autoReconnect, stale: stale, ready: !!service && service.ready,
+      reconnectEntity: caps.reconnect || "", lastAttemptAt: lastReconnectAt, now: now
+    })) return
     lastReconnectAt = now
     service.callService("button", "press", { entity_id: caps.reconnect })
   }
 
-  onStatesChanged: {
+  onEntityStatesChanged: {
     refreshLiveness()
     if (fanEntity && modelName === "" && service)
       service.fetchModel(fanEntity, function(name) { root.modelName = name })
@@ -295,6 +299,8 @@ Panel {
     bar: root.bar
     text: root.barLabel
     active: View.barActive(root.viewModel)
+    activeColor: root.barMetric === "PM2.5" && root.airAlarm
+      ? Color.urgent : (bar ? bar.barForeground : Color.foreground)
     // Stale reads as broken on purpose: the numbers are still there, but they
     // describe the past. Presenting them at full strength is what makes a
     // widget claim a device is off while it is plainly running.
@@ -608,7 +614,7 @@ Panel {
 
               readonly property var points: root.historyPoints
               readonly property var bounds: root.historyBounds
-              readonly property color line: root.bar.foreground
+              readonly property color line: root.airAlarm ? Color.urgent : root.bar.foreground
               onPointsChanged: requestPaint()
               onLineChanged: requestPaint()
 
@@ -698,7 +704,8 @@ Panel {
                   id: readingValue
                   anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                   text: View.readingText(parent.modelData)
-                  color: root.bar.foreground
+                  color: View.readingColorKey(parent.modelData, root.airAlarm) === "urgent"
+                    ? Color.urgent : root.bar.foreground
                   font.family: root.bar.fontFamily; font.pixelSize: Style.font.body
                 }
               }

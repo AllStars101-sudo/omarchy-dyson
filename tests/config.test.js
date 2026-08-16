@@ -177,6 +177,22 @@ describe("origin normalization", () => {
     }
   })
 
+  test("a port must be decimal digits, not anything Number() accepts", () => {
+    // Number("0x10") is 16, so without the digit test "…:0x10" would normalize
+    // to port 16 — a token stored under one spelling and looked up under
+    // another would silently never be found.
+    assert.equal(Origin.normalizeOrigin("http://ha.local:0x10"), "")
+    assert.equal(Origin.normalizeOrigin("http://ha.local:1e3"), "")
+    assert.equal(Origin.normalizeOrigin("http://ha.local: 80"), "")
+    assert.equal(Origin.normalizeOrigin("http://ha.local:+80"), "")
+  })
+
+  test("the port range boundary", () => {
+    assert.equal(Origin.normalizeOrigin("http://ha.local:65535"), "http://ha.local:65535")
+    assert.equal(Origin.normalizeOrigin("http://ha.local:65536"), "")
+    assert.equal(Origin.normalizeOrigin("http://ha.local:1"), "http://ha.local:1")
+  })
+
   test("preparedUrl", () => {
     assert.equal(Origin.preparedUrl("ha.local"), "https://ha.local")
     assert.equal(Origin.preparedUrl("http://ha.local"), "http://ha.local")

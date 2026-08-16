@@ -1,49 +1,50 @@
 #!/usr/bin/env bash
-# Structural check on the QML. Full type checking is impossible outside Omarchy
-# — qs.Ui and qs.Commons live in the shell, which CI does not have — so this
-# asserts what CAN be asserted without it: that every file parses, that each
-# declares the imports it uses, and that the manifest's entry points exist.
+# Structural checks on the QML and manifest. Full type checking is impossible
+# outside Omarchy — qs.Ui and qs.Commons live in the shell — so this asserts
+# what CAN be checked without it, and fails hard rather than passing silently
+# when a tool is missing.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
 fail=0
-QMLLINT="${QMLLINT:-$(command -v qmllint || echo /usr/lib/qt6/bin/qmllint)}"
+QMLLINT="${QMLLINT:-$(command -v qmllint || command -v qmllint6 || echo /usr/lib/qt6/bin/qmllint)}"
 
 echo "== manifest =="
-node -e '
-const m = require("./manifest.json"), fs = require("fs")
-const need = ["schemaVersion","id","name","version","kinds","entryPoints"]
-for (const k of need) if (!(k in m)) { console.error("missing " + k); process.exit(1) }
-if (m.schemaVersion !== 1) { console.error("schemaVersion must be 1"); process.exit(1) }
-if (m.id.startsWith("omarchy.")) { console.error("id must not use the reserved omarchy. prefix"); process.exit(1) }
-for (const [kind, file] of Object.entries(m.entryPoints)) {
-  if (!m.kinds.includes(kind === "barWidget" ? "bar-widget" : kind)) {
-    console.error(`entryPoint ${kind} has no matching kind`); process.exit(1)
-  }
-  if (!fs.existsSync(file)) { console.error(`entryPoint ${kind} -> ${file} does not exist`); process.exit(1) }
-}
-// Declared schema keys must have defaults, or a fresh install reads undefined.
-for (const f of (m.barWidget?.schema || [])) {
-  if (!(f.key in (m.barWidget.defaults || {}))) {
-    console.error(`schema key ${f.key} has no entry in defaults`); process.exit(1)
-  }
-}
-console.log("manifest ok: " + m.id + " v" + m.version)
-' || fail=1
+node scripts/check-manifest.js || fail=1
+
+echo "== cross-file symbols =="
+# The gap this closes: Service.qml once called Config.pinnedFor() long after
+# that function was deleted. Nothing caught it — node --check is per-file, and
+# no test can see a QML-to-JS reference.
+node scripts/check-symbols.js || fail=1
 
 echo "== qml parse =="
+if [ ! -x "$QMLLINT" ] && ! command -v "$QMLLINT" >/dev/null 2>&1; then
+  echo "FAIL: qmllint not found (set QMLLINT=/path/to/qmllint)"
+  echo "      Refusing to report success without actually parsing the QML."
+  exit 1
+fi
 for f in *.qml; do
   out=$("$QMLLINT" "$f" 2>&1)
-  # Unresolved imports are expected off-Omarchy; a syntax error is not.
-  if grep -qiE "Expected token|Unexpected token|Syntax error|unterminated" <<<"$out"; then
-    echo "FAIL $f"; grep -iE "Expected token|Unexpected token|Syntax error|unterminated" <<<"$out" | head -5
-    fail=1
+  # Unresolved qs.Ui / qs.Commons imports and the warnings that cascade from
+  # them are expected off-Omarchy. Everything else is a real diagnostic.
+  # Off-Omarchy, qs.Ui and qs.Commons cannot resolve, and a cascade of
+  # diagnostics follows from that alone: unresolved base types, unqualified
+  # access into them, signals and properties that cannot be found. Those
+  # categories are tolerated by name. Everything else — notably
+  # [property-override], which caught Service.qml shadowing QQuickItem.states —
+  # fails the build. Tolerating a category is a deliberate act, not a catch-all.
+  filtered=$(grep -E "^(Error|Warning):" <<<"$out" \
+    | grep -viE "\[(unqualified|unresolved-type|inheritance-cycle|missing-property|uncreatable-type|missing-type|import)\]" \
+    | grep -viE "no matching signal found for handler|is not a type|was not found|Cannot load|no matching import" || true)
+  if [ -n "$filtered" ]; then
+    echo "FAIL $f"; echo "$filtered" | head -8; fail=1
   else
     echo "ok   $f"
   fi
 done
 
-echo "== js parse (QML engine sees these as scripts, not modules) =="
+echo "== js parse =="
 for f in *.js; do node --check "$f" && echo "ok   $f" || fail=1; done
 
 exit $fail

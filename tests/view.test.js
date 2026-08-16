@@ -70,6 +70,30 @@ describe("status line", () => {
     assert.match(View.statusLine(model({ fanEntity: "" })), /no Dyson found/)
   })
 
+  test("precedence holds when problems compete", () => {
+    // Each case sets TWO conditions at once. Varying one field against an
+    // otherwise-healthy model can never pin an ordering.
+    assert.match(View.statusLine(model({ hasService: false, configured: false, lastError: "x" })),
+      /starting up/, "no service outranks everything")
+    assert.match(View.statusLine(model({ configured: false, lastError: "x", everLoaded: false })),
+      /not connected/, "unconfigured outranks an error")
+    assert.match(View.statusLine(model({ lastError: "boom", everLoaded: false, fanEntity: "" })),
+      /boom/, "an error outranks still-connecting")
+    assert.match(View.statusLine(model({ everLoaded: false, fanEntity: "", stale: true })),
+      /connecting/, "connecting outranks no-device-found")
+    assert.match(View.statusLine(model({ fanEntity: "", stale: true, staleMs: 999999 })),
+      /no Dyson found/, "no device outranks stale")
+  })
+
+  test("hero subtitle precedence holds when problems compete", () => {
+    assert.equal(View.heroSubtitle(model({ configured: false, lastError: "x", fanEntity: "" })),
+      "Not connected")
+    assert.equal(View.heroSubtitle(model({ lastError: "boom", fanEntity: "", stale: true })),
+      "boom", "an error outranks both no-device and stale")
+    assert.equal(View.heroSubtitle(model({ fanEntity: "", stale: true, staleMs: 999999 })),
+      "No Dyson found", "no device outranks stale")
+  })
+
   test("a service problem outranks a device reading", () => {
     // Reporting "on · speed 5" while unable to reach Home Assistant would be
     // stating something the widget has no basis for.
@@ -242,12 +266,32 @@ describe("readings", () => {
     assert.equal(View.readings(model({ pm25: null, voc: undefined, aqi: "", humidity: "" })).length, 0)
   })
 
-  test("readings carry no emphasis flag, because nothing is emphasised", () => {
-    // The plugin paints entirely in the bar's foreground, so a reading is a
-    // label, a value and a unit — there is no band to colour by.
-    for (const entry of View.readings(model())) {
-      assert.equal("band" in entry, false)
-    }
+  test("only PM2.5 can raise an alarm", () => {
+    const r = View.readings(model({ pm25: "3", pm10: "5", aqi: "4", humidity: "51" }))
+    assert.equal(r.find(e => e.label === "PM2.5").alarm, true)
+    for (const label of ["PM10", "AQI", "Humidity"])
+      assert.equal(r.find(e => e.label === label).alarm, false,
+        `${label} has no settled threshold to alarm on`)
+  })
+
+  test("readingColorKey colours only an alarming PM2.5", () => {
+    const pm = { label: "PM2.5", alarm: true }
+    const other = { label: "AQI", alarm: false }
+    assert.equal(View.readingColorKey(pm, true), "urgent")
+    assert.equal(View.readingColorKey(pm, false), "foreground", "clean air is not urgent")
+    assert.equal(View.readingColorKey(other, true), "foreground",
+      "a non-alarming reading stays neutral even while the air is bad")
+    assert.equal(View.readingColorKey(null, true), "foreground")
+  })
+
+  test("httpError explains each failure in the reader's terms", () => {
+    assert.match(View.httpError(0, "http://ha:8123"), /Cannot reach Home Assistant at http:\/\/ha:8123/)
+    assert.match(View.httpError(401, "x"), /rejected the access token/)
+    assert.match(View.httpError(403, "x"), /rejected the access token/)
+    assert.match(View.httpError(404, "x"), /no such entity or endpoint/)
+    assert.match(View.httpError(500, "x"), /HTTP 500/)
+    assert.match(View.httpError(502, "x"), /HTTP 502/)
+    assert.ok(View.PARSE_ERROR.length > 10)
   })
 
   test("readingText appends the unit only when there is one", () => {

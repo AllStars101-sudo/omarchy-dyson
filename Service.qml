@@ -4,6 +4,7 @@ import Quickshell.Io
 import "Dyson.js" as Dyson
 import "Config.js" as Config
 import "Origin.js" as Origin
+import "View.js" as View
 
 // One connection, one poll, shared by every bar widget. Two fans on the bar
 // cost one /api/states request, not two.
@@ -34,7 +35,7 @@ Item {
   property string tokenOrigin: ""
   property string phase: "idle"     // idle | connecting | ready | error
   property string lastError: ""
-  property var states: []
+  property var entityStates: []
   property int stateRevision: 0
   property bool everLoaded: false
 
@@ -61,13 +62,9 @@ Item {
         if (!onDone) return
         if (rawText) { onDone(String(xhr.responseText || "")); return }
         try { onDone(JSON.parse(xhr.responseText || "null")) }
-        catch (e) { root.fail("Home Assistant sent a response we could not read.") }
-      } else if (xhr.status === 401) {
-        root.fail("Home Assistant rejected the access token.")
-      } else if (xhr.status === 0) {
-        root.fail("Cannot reach Home Assistant at " + root.baseUrl + ".")
+        catch (e) { root.fail(View.PARSE_ERROR) }
       } else {
-        root.fail("Home Assistant returned HTTP " + xhr.status + ".")
+        root.fail(View.httpError(xhr.status, root.baseUrl))
       }
     }
     xhr.send(body ? JSON.stringify(body) : "")
@@ -93,7 +90,7 @@ Item {
     if (root.phase === "idle") root.phase = "connecting"
     request("GET", "/api/states", null, function(data) {
       if (!Array.isArray(data)) return
-      root.states = data
+      root.entityStates = data
       root.everLoaded = true
       root.stateRevision++
     })
@@ -134,7 +131,7 @@ Item {
       if (origin !== root.currentOrigin()) return
       root.token = ""
       root.tokenOrigin = ""
-      root.states = []
+      root.entityStates = []
       root.everLoaded = false
       root.phase = "idle"
     }
@@ -161,7 +158,7 @@ Item {
 
   onBaseUrlChanged: {
     root.token = ""
-    root.states = []
+    root.entityStates = []
     root.everLoaded = false
     root.phase = root.baseUrl ? "connecting" : "idle"
     root.lastError = ""
@@ -174,12 +171,6 @@ Item {
     var next = Config.merge(root.config, patch)
     root.config = next
     configFile.setText(Config.serialize(next))
-  }
-
-  function pinnedFor(moduleName) { return Config.pinnedFor(root.config, moduleName) }
-  function setPin(moduleName, entityId) {
-    root.config = Config.withPin(root.config, moduleName, entityId)
-    configFile.setText(Config.serialize(root.config))
   }
 
   // FileView will not create a missing parent directory, so the config dir is

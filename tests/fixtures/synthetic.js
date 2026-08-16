@@ -125,6 +125,57 @@ var sparse = [
   })
 ]
 
+// Near-miss companion names. Real hass-dyson installs carry entities whose tail
+// EXTENDS a suffix the matcher looks for, and only these can tell an exact-suffix
+// matcher apart from a substring or prefix one.
+var nearMiss = [
+  entity("fan.dyson_nm", "on", { friendly_name: "Dyson NM1-EU-AAA1111A", night_mode: false,
+                                 percentage: 30, percentage_step: 10.0 }),
+  entity("switch.dyson_nm_night_mode_schedule", "off"),
+  entity("switch.dyson_nm_auto_mode_override", "off"),
+  entity("number.dyson_nm_sleep_timer_remaining", "12"),
+  entity("sensor.dyson_nm_hepa_filter_life_hours", "800"),
+  entity("button.dyson_nm_reconnect_wifi", "unknown"),
+  entity("select.dyson_nm_oscillation_mode_preset", "wide")
+]
+
+// Two devices whose slugs overlap by prefix: fan.dyson_a and fan.dyson_ab. The
+// separator rule alone cannot separate these, so this is what proves the
+// tie-breaking actually holds.
+var prefixSiblings = [
+  entity("fan.dyson_a", "on", { friendly_name: "Dyson AAA-EU-1111111", night_mode: false,
+                                percentage: 20, percentage_step: 10.0 }),
+  entity("sensor.dyson_a_pm25", "3", { device_class: "pm25" }),
+  entity("switch.dyson_a_night_mode", "off"),
+  entity("fan.dyson_ab", "on", { friendly_name: "Dyson BBB-EU-2222222", night_mode: false,
+                                 percentage: 90, percentage_step: 10.0 }),
+  entity("sensor.dyson_ab_pm25", "99", { device_class: "pm25" }),
+  entity("switch.dyson_ab_night_mode", "on"),
+  // Deliberately present on AB and absent on A. Shortest-name tie-breaking
+  // cannot save A here — if the separator rule stops excluding AB's entities,
+  // A starts reporting a VOC reading that belongs to a different device.
+  entity("sensor.dyson_ab_voc", "7.7", { device_class: "volatile_organic_compounds" }),
+  entity("number.dyson_ab_sleep_timer", "30")
+]
+
+// Environmental readings go unavailable whenever a device reconnects — the
+// integration's own docs call this normal, and it must not be plotted or shown.
+var unavailable = [
+  entity("fan.dyson_u", "on", { friendly_name: "Dyson UUU-EU-3333333", night_mode: false,
+                                percentage: 10, percentage_step: 10.0 }),
+  entity("sensor.dyson_u_pm25", "unavailable", { device_class: "pm25" }),
+  entity("sensor.dyson_u_voc", "unknown", { device_class: "volatile_organic_compounds" }),
+  entity("sensor.dyson_u_temperature", "21.0", { device_class: "temperature" })
+]
+
+// Big+Quiet does not use Dyson's usual ten-speed dial.
+var bigQuiet = [
+  entity("fan.dyson_bp", "on", { friendly_name: "Dyson BP1-EU-4444444", night_mode: false,
+                                 preset_modes: ["auto", "manual"], percentage: 60,
+                                 percentage_step: 12.5 }),
+  entity("sensor.dyson_bp_pm25", "8", { device_class: "pm25" })
+]
+
 // Two fans in one house, plus an unrelated ceiling fan.
 function multiHouse() {
   return [entity("fan.ceiling", "off", { friendly_name: "Ceiling fan" })]
@@ -132,5 +183,7 @@ function multiHouse() {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { entity: entity, tp09: tp09, ph01: ph01, hp07: hp07, sparse: sparse, multiHouse: multiHouse }
+  module.exports = { entity: entity, tp09: tp09, ph01: ph01, hp07: hp07, sparse: sparse,
+  nearMiss: nearMiss, prefixSiblings: prefixSiblings, unavailable: unavailable,
+  bigQuiet: bigQuiet, multiHouse: multiHouse }
 }

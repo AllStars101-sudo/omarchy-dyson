@@ -144,7 +144,7 @@ Air treatment only. Dyson robot vacuums and lights are out of scope.
 ## Development
 
 ```bash
-npm test        # 107 tests
+npm test          # 123 tests
 npm run coverage  # tests + the 100% gate
 npm run lint      # QML parse, manifest, entry points
 npm run check     # all three, as CI runs them
@@ -159,8 +159,8 @@ coverage**, enforced per file by `scripts/check-coverage.js`:
 
 | File | What it holds |
 |---|---|
-| `Dyson.js` | Entity discovery, capability mapping, speed, banding, model names, history, liveness |
-| `View.js` | Every view decision — bar label, status text, which rows exist, reading list, control options |
+| `Dyson.js` | Entity discovery, capability mapping, speed, air quality, model names, history, liveness, reconnect policy |
+| `View.js` | Every view decision — bar label, status text, which rows exist, reading list, control options, error messages |
 | `Config.js` | Config parsing, clamping, serialization |
 | `Origin.js` | URL normalisation, the identity the keyring scopes tokens by |
 

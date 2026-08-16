@@ -204,6 +204,53 @@ function percentageFromSpeed(speed, attrs) {
   return s === 0 ? 0 : Math.round(s * (100 / steps))
 }
 
+// --- air quality ----------------------------------------------------------
+
+// PM2.5 bands in µg/m³, following the WHO 2021 24-hour guidance the Dyson app
+// broadly tracks. Only "poor" and "bad" are surfaced — see View.airQualityAlarm.
+function pm25Band(value) {
+  // A missing reading arrives as "", and Number("") is 0 — which would band an
+  // absent sensor as pristine air. Reject blanks before coercing.
+  if (value === "" || value === null || value === undefined) return "unknown"
+  var v = Number(value)
+  if (!isFinite(v)) return "unknown"
+  if (v <= 12) return "good"
+  if (v <= 35) return "fair"
+  if (v <= 55) return "poor"
+  return "bad"
+}
+
+// The one condition this plugin colours for. Everything else inherits the
+// theme's foreground; air quality past the WHO 24-hour guideline is worth
+// breaking that rule for.
+function airQualityAlarm(pm25) {
+  var band = pm25Band(pm25)
+  return band === "poor" || band === "bad"
+}
+
+// Whether a stale device should be poked now. Rate limiting matters because a
+// reconnect takes seconds to settle, and firing again inside that window tears
+// down the session it is rebuilding. Pure, so the promise the README makes
+// ("at most once every two minutes") is actually checkable.
+var RECONNECT_INTERVAL_MS = 120000
+
+function shouldReconnect(opts) {
+  if (!opts) return false
+  if (!opts.enabled || !opts.stale || !opts.ready) return false
+  if (!opts.reconnectEntity) return false
+  var last = Number(opts.lastAttemptAt) || 0
+  // A zero last-attempt means never tried, which must not be read as "just now".
+  if (last && (opts.now - last) < RECONNECT_INTERVAL_MS) return false
+  return true
+}
+
+// A device is stale when it has been silent longer than the threshold. -1 means
+// "no timestamps yet", which is unknown rather than stale — treating it as
+// stale would fire a reconnect at every cold start.
+function isStale(staleMs, staleSeconds) {
+  return staleMs >= 0 && staleMs > staleSeconds * 1000
+}
+
 // --- model names ----------------------------------------------------------
 // HA's device registry records Dyson's numeric product type, not a name a
 // person would recognise. These are libdyson's published type codes; anything
@@ -321,4 +368,5 @@ function stalenessMs(states, fanEntity, now) {
 
 // QML imports this file directly and never defines `module`; the guard lets
 // node require() the same source so coverage instrumentation can see it.
-if (typeof module !== "undefined") module.exports = { companionEntity: companionEntity, deviceEntities: deviceEntities, discover: discover, hasPreset: hasPreset, historyStats: historyStats, isAutoMode: isAutoMode, isDysonFan: isDysonFan, listFans: listFans, modelName: modelName, newestUpdate: newestUpdate, parseHistory: parseHistory, percentageFromSpeed: percentageFromSpeed, primaryEntity: primaryEntity, resolveFan: resolveFan, sensorByClass: sensorByClass, sensorByName: sensorByName, serialFromName: serialFromName, slugOf: slugOf, speedFromPercentage: speedFromPercentage, stalenessMs: stalenessMs, stepsFor: stepsFor, MODEL_NAMES: MODEL_NAMES }
+if (typeof module !== "undefined") module.exports = { pm25Band: pm25Band, shouldReconnect: shouldReconnect, isStale: isStale,
+  RECONNECT_INTERVAL_MS: RECONNECT_INTERVAL_MS, airQualityAlarm: airQualityAlarm, companionEntity: companionEntity, deviceEntities: deviceEntities, discover: discover, hasPreset: hasPreset, historyStats: historyStats, isAutoMode: isAutoMode, isDysonFan: isDysonFan, listFans: listFans, modelName: modelName, newestUpdate: newestUpdate, parseHistory: parseHistory, percentageFromSpeed: percentageFromSpeed, primaryEntity: primaryEntity, resolveFan: resolveFan, sensorByClass: sensorByClass, sensorByName: sensorByName, serialFromName: serialFromName, slugOf: slugOf, speedFromPercentage: speedFromPercentage, stalenessMs: stalenessMs, stepsFor: stepsFor, MODEL_NAMES: MODEL_NAMES }

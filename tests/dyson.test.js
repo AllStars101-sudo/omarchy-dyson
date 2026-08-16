@@ -152,6 +152,52 @@ describe("entity lookup", () => {
     assert.equal(Dyson.sensorByName(hp02, hp02Fan, ["hcho", "formaldehyde"]), "")
   })
 
+  // These are the tests the exact-suffix rule actually needs. An assertion that
+  // "auto_mode" does not match "firmware_auto_update" cannot fail under ANY
+  // matching strategy, because one is not a substring of the other — it reads
+  // like a regression test and cannot regress. Only a name that EXTENDS a real
+  // suffix discriminates.
+  test("a name that extends a wanted suffix must not match it", () => {
+    const nm = "fan.dyson_nm"
+    assert.equal(Dyson.companionEntity(fx.nearMiss, nm, "switch", ["night_mode"]), "",
+      "night_mode_schedule is a schedule, not the night mode toggle")
+    assert.equal(Dyson.companionEntity(fx.nearMiss, nm, "switch", ["auto_mode"]), "",
+      "auto_mode_override is not auto mode")
+    assert.equal(Dyson.companionEntity(fx.nearMiss, nm, "number", ["sleep_timer"]), "",
+      "sleep_timer_remaining is a readout, not the control")
+    assert.equal(Dyson.companionEntity(fx.nearMiss, nm, "sensor", ["hepa_filter_life"]), "")
+    assert.equal(Dyson.companionEntity(fx.nearMiss, nm, "button", ["reconnect"]), "")
+    assert.equal(Dyson.companionEntity(fx.nearMiss, nm, "select", ["oscillation_mode"]), "")
+  })
+
+  test("a whole device of near-miss names yields no controls at all", () => {
+    const c = Dyson.discover(fx.nearMiss, "fan.dyson_nm")
+    for (const key of ["nightSwitch", "autoSwitch", "sleepTimer", "hepaFilter",
+                       "reconnect", "oscillationMode"]) {
+      assert.equal(c[key], "", `${key} must not latch onto a near-miss name`)
+    }
+  })
+
+  test("a device whose slug is a prefix of another never borrows its entities", () => {
+    // The separator rule alone cannot separate fan.dyson_a from fan.dyson_ab;
+    // this is what proves the tie-breaking holds.
+    const a = Dyson.discover(fx.prefixSiblings, "fan.dyson_a")
+    const ab = Dyson.discover(fx.prefixSiblings, "fan.dyson_ab")
+    assert.equal(a.pm25, "sensor.dyson_a_pm25")
+    assert.equal(ab.pm25, "sensor.dyson_ab_pm25")
+    assert.equal(a.nightSwitch, "switch.dyson_a_night_mode")
+    assert.equal(ab.nightSwitch, "switch.dyson_ab_night_mode")
+
+    // The decisive pair: AB has these, A does not. Shortest-name tie-breaking
+    // cannot help — only the separator rule keeps them apart.
+    assert.equal(a.voc, "", "A must not report AB's VOC sensor")
+    assert.equal(ab.voc, "sensor.dyson_ab_voc")
+    assert.equal(a.sleepTimer, "", "nor AB's sleep timer")
+    assert.equal(ab.sleepTimer, "number.dyson_ab_sleep_timer")
+    assert.equal(Dyson.deviceEntities(fx.prefixSiblings, "fan.dyson_a", "sensor").length, 1,
+      "only A's own sensor is even a candidate")
+  })
+
   test("the reconnect button, which drives the staleness self-heal", () => {
     assert.equal(hp02Caps.reconnect, "button.dyson_sz2_au_tba2519a_reconnect")
     assert.equal(Dyson.discover(fx.sparse, "fan.dyson_sparse").reconnect, "")
@@ -257,6 +303,39 @@ describe("speed", () => {
     assert.equal(Dyson.speedFromPercentage(-5, hp02Attrs), 0)
   })
 
+  // A round trip alone only proves the two functions are inverses; it would
+  // still pass with the whole dial inverted. These pin absolute values.
+  test("absolute speed positions, not just a round trip", () => {
+    assert.equal(Dyson.percentageFromSpeed(1, hp02Attrs), 10)
+    assert.equal(Dyson.percentageFromSpeed(3, hp02Attrs), 30)
+    assert.equal(Dyson.percentageFromSpeed(5, hp02Attrs), 50)
+    assert.equal(Dyson.percentageFromSpeed(8, hp02Attrs), 80)
+    assert.equal(Dyson.speedFromPercentage(10, hp02Attrs), 1)
+    assert.equal(Dyson.speedFromPercentage(30, hp02Attrs), 3)
+    assert.equal(Dyson.speedFromPercentage(50, hp02Attrs), 5)
+    assert.equal(Dyson.speedFromPercentage(80, hp02Attrs), 8)
+    // Speed must rise with percentage, everywhere, not just at the ends.
+    for (let pct = 10; pct <= 100; pct += 10) {
+      assert.ok(Dyson.speedFromPercentage(pct, hp02Attrs)
+        >= Dyson.speedFromPercentage(pct - 10, hp02Attrs), `monotonic at ${pct}%`)
+    }
+  })
+
+  test("an off-step percentage rounds to the nearest speed", () => {
+    // Home Assistant reports whatever the device says, which is not always a
+    // clean multiple of the step.
+    assert.equal(Dyson.speedFromPercentage(35, hp02Attrs), 4, "35% is nearer speed 4 than 3")
+    assert.equal(Dyson.speedFromPercentage(34, hp02Attrs), 3)
+    assert.equal(Dyson.speedFromPercentage(1, hp02Attrs), 1, "never rounds down to off")
+  })
+
+  test("a device with a non-ten-speed dial", () => {
+    const bp = fx.bigQuiet[0].attributes
+    assert.equal(Dyson.stepsFor(bp), 8, "12.5% steps means eight speeds")
+    assert.equal(Dyson.speedFromPercentage(60, bp), 5)
+    assert.equal(Dyson.percentageFromSpeed(8, bp), 100)
+  })
+
   test("every speed round-trips losslessly on any dial size", () => {
     for (const attrs of [hp02Attrs, { percentage_step: 20 }, { percentage_step: 25 },
                          { percentage_step: 100 }]) {
@@ -272,6 +351,34 @@ describe("speed", () => {
     assert.equal(Dyson.percentageFromSpeed(99, hp02Attrs), 100)
     assert.equal(Dyson.percentageFromSpeed(-3, hp02Attrs), 0)
     assert.equal(Dyson.speedFromPercentage(500, hp02Attrs), 10)
+  })
+})
+
+describe("air quality", () => {
+  test("WHO 2021 thresholds", () => {
+    assert.equal(Dyson.pm25Band(0), "good")
+    assert.equal(Dyson.pm25Band(12), "good")
+    assert.equal(Dyson.pm25Band(12.1), "fair")
+    assert.equal(Dyson.pm25Band(35), "fair")
+    assert.equal(Dyson.pm25Band(35.1), "poor")
+    assert.equal(Dyson.pm25Band(55), "poor")
+    assert.equal(Dyson.pm25Band(55.1), "bad")
+    assert.equal(Dyson.pm25Band("7"), "good", "states arrive as strings")
+  })
+
+  test("a missing reading is never a good reading", () => {
+    // Number("") is 0, which would band an absent sensor as pristine air.
+    for (const v of ["", null, undefined, "unavailable", NaN])
+      assert.equal(Dyson.pm25Band(v), "unknown", String(v))
+  })
+
+  test("the alarm fires only past the guideline, and never on no data", () => {
+    assert.equal(Dyson.airQualityAlarm("3"), false)
+    assert.equal(Dyson.airQualityAlarm("35"), false, "at the guideline is not past it")
+    assert.equal(Dyson.airQualityAlarm("36"), true)
+    assert.equal(Dyson.airQualityAlarm("120"), true)
+    assert.equal(Dyson.airQualityAlarm(""), false, "no reading is not an alarm")
+    assert.equal(Dyson.airQualityAlarm("unavailable"), false)
   })
 })
 
@@ -292,10 +399,15 @@ describe("model naming", () => {
     assert.equal(Dyson.modelName("None"), "")
   })
 
-  test("every table entry is a non-empty product name", () => {
-    for (const [code, name] of Object.entries(Dyson.MODEL_NAMES)) {
-      assert.ok(name.length > 3, `${code} has a real name`)
-      assert.equal(Dyson.modelName(code), "Dyson " + name)
+  // Asserting the function agrees with the table it reads is a tautology — it
+  // passes for any lookup implementation and cannot catch a transposed name.
+  // Assert the contract instead, and let the table be data.
+  test("the contract holds for every listed code", () => {
+    for (const code of Object.keys(Dyson.MODEL_NAMES)) {
+      const name = Dyson.modelName(code)
+      assert.ok(name.startsWith("Dyson "), `${code} is prefixed`)
+      assert.ok(name.length > "Dyson ".length + 3, `${code} resolves to a real name`)
+      assert.notEqual(name, "Dyson " + code, `${code} is translated, not passed through`)
     }
   })
 })
@@ -403,6 +515,47 @@ describe("liveness", () => {
     const future = [fx.entity("sensor.d_pm25", "3", { device_class: "pm25" },
       "2027-01-01T00:00:00+00:00")]
     assert.equal(Dyson.stalenessMs(future, "fan.d", T), 0)
+  })
+
+  test("isStale: unknown is not stale", () => {
+    assert.equal(Dyson.isStale(-1, 300), false, "no timestamps yet is unknown")
+    assert.equal(Dyson.isStale(0, 300), false)
+    assert.equal(Dyson.isStale(300000, 300), false, "exactly at the threshold is not past it")
+    assert.equal(Dyson.isStale(300001, 300), true)
+  })
+
+  test("shouldReconnect honours every precondition", () => {
+    const base = { enabled: true, stale: true, ready: true,
+                   reconnectEntity: "button.d_reconnect", lastAttemptAt: 0, now: 1000000 }
+    assert.equal(Dyson.shouldReconnect(base), true)
+    assert.equal(Dyson.shouldReconnect({ ...base, enabled: false }), false, "opt-out is honoured")
+    assert.equal(Dyson.shouldReconnect({ ...base, stale: false }), false, "nothing to fix")
+    assert.equal(Dyson.shouldReconnect({ ...base, ready: false }), false,
+      "cannot press a button we cannot reach")
+    assert.equal(Dyson.shouldReconnect({ ...base, reconnectEntity: "" }), false,
+      "some models expose no reconnect button")
+    assert.equal(Dyson.shouldReconnect(null), false)
+  })
+
+  test("shouldReconnect rate limits to once every two minutes", () => {
+    // The README promises this; a reconnect takes seconds to settle and firing
+    // again inside the window tears down the session being rebuilt.
+    const at = t => ({ enabled: true, stale: true, ready: true,
+                       reconnectEntity: "button.d_reconnect",
+                       lastAttemptAt: 1000000, now: 1000000 + t })
+    assert.equal(Dyson.shouldReconnect(at(0)), false)
+    assert.equal(Dyson.shouldReconnect(at(60000)), false, "one minute is too soon")
+    assert.equal(Dyson.shouldReconnect(at(119999)), false)
+    assert.equal(Dyson.shouldReconnect(at(120000)), true, "two minutes exactly is allowed")
+    assert.equal(Dyson.shouldReconnect(at(600000)), true)
+    assert.equal(Dyson.RECONNECT_INTERVAL_MS, 120000)
+  })
+
+  test("a never-attempted reconnect is not read as just-attempted", () => {
+    // lastAttemptAt starts at 0; treating that as a timestamp would block the
+    // very first recovery until the epoch plus two minutes.
+    assert.equal(Dyson.shouldReconnect({ enabled: true, stale: true, ready: true,
+      reconnectEntity: "button.d_reconnect", lastAttemptAt: 0, now: 60000 }), true)
   })
 
   test("stalenessMs defaults to now", () => {

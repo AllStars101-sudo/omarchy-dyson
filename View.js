@@ -8,6 +8,18 @@
 
 var FAN_ICON = "󰈐"
 
+// Home Assistant failures, phrased for someone who did not write this plugin.
+var PARSE_ERROR = "Home Assistant sent a response we could not read."
+
+function httpError(status, baseUrl) {
+  // Status 0 is XMLHttpRequest's "the request never completed" — a wrong
+  // address or a stopped server, not something Home Assistant answered.
+  if (status === 0) return "Cannot reach Home Assistant at " + baseUrl + "."
+  if (status === 401 || status === 403) return "Home Assistant rejected the access token."
+  if (status === 404) return "Home Assistant has no such entity or endpoint."
+  return "Home Assistant returned HTTP " + status + "."
+}
+
 // --- bar button -----------------------------------------------------------
 
 // A speed reading beside a device that is off describes nothing happening, and
@@ -93,16 +105,15 @@ function sections(m) {
 
 // --- readings -------------------------------------------------------------
 
-// The plugin paints nothing in its own colours: every surface uses the bar's
-// foreground, so it inherits whatever theme is active rather than fighting it.
-// Readings therefore carry no emphasis flag — only a label, a value and a unit.
+// Readings are drawn in the theme's foreground, with one exception: PM2.5
+// carries an alarm flag so genuinely bad air can be called out.
 function readings(m) {
   var out = []
-  function add(label, value, unit) {
+  function add(label, value, unit, alarm) {
     if (value !== "" && value !== null && value !== undefined)
-      out.push({ label: label, value: value, unit: unit })
+      out.push({ label: label, value: value, unit: unit, alarm: !!alarm })
   }
-  add("PM2.5", m.pm25, "µg/m³")
+  add("PM2.5", m.pm25, "µg/m³", true)
   add("PM10", m.pm10, "µg/m³")
   add("VOC", m.voc, "")
   add("NO₂", m.no2, "")
@@ -112,6 +123,14 @@ function readings(m) {
   add("Humidity", m.humidity, "%")
   add("Filter", m.hepaFilter, "%")
   return out
+}
+
+// Named rather than valued so the QML side owns the palette. `alarmActive` is
+// Dyson.airQualityAlarm, passed in rather than imported: this file has to load
+// under both QML's JS engine and node, and cross-file imports do not survive
+// both cleanly.
+function readingColorKey(entry, alarmActive) {
+  return entry && entry.alarm && alarmActive ? "urgent" : "foreground"
 }
 
 function readingText(entry) {
@@ -189,10 +208,10 @@ function connectionStatus(m) {
 }
 
 if (typeof module !== "undefined") module.exports = {
-  FAN_ICON: FAN_ICON, barLabel: barLabel, barActive: barActive, barDimmed: barDimmed,
+  FAN_ICON: FAN_ICON, PARSE_ERROR: PARSE_ERROR, httpError: httpError, barLabel: barLabel, barActive: barActive, barDimmed: barDimmed,
   statusLine: statusLine, heroSubtitle: heroSubtitle, staleMinutes: staleMinutes,
   isFiniteNumber: isFiniteNumber, sections: sections, readings: readings,
-  readingText: readingText, hvacOptions: hvacOptions,
+  readingText: readingText, readingColorKey: readingColorKey, hvacOptions: hvacOptions,
   deviceOptions: deviceOptions, spinDurationMs: spinDurationMs,
   placements: placements, connectionStatus: connectionStatus
 }

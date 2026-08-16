@@ -105,8 +105,8 @@ Item {
   readonly property var placements: shell && shell.barConfig
     ? View.placements(shell.barConfig.layout, root.pluginId) : []
 
-  readonly property var fans: service && service.states.length
-    ? Dyson.listFans(service.states) : []
+  readonly property var fans: service && service.entityStates.length
+    ? Dyson.listFans(service.entityStates) : []
 
   function fanOptions() { return View.deviceOptions(root.fans, true) }
 
