@@ -275,28 +275,6 @@ describe("speed", () => {
   })
 })
 
-describe("air quality banding", () => {
-  test("WHO 2021 thresholds", () => {
-    assert.equal(Dyson.pm25Band(0), "good")
-    assert.equal(Dyson.pm25Band(12), "good")
-    assert.equal(Dyson.pm25Band(12.1), "fair")
-    assert.equal(Dyson.pm25Band(35), "fair")
-    assert.equal(Dyson.pm25Band(35.1), "poor")
-    assert.equal(Dyson.pm25Band(55), "poor")
-    assert.equal(Dyson.pm25Band(55.1), "bad")
-    assert.equal(Dyson.pm25Band("7"), "good", "strings from HA states are numbers")
-  })
-
-  test("a missing reading is never a good reading", () => {
-    // Number("") is 0, which would band an absent sensor as pristine air.
-    assert.equal(Dyson.pm25Band(""), "unknown")
-    assert.equal(Dyson.pm25Band(null), "unknown")
-    assert.equal(Dyson.pm25Band(undefined), "unknown")
-    assert.equal(Dyson.pm25Band("unavailable"), "unknown")
-    assert.equal(Dyson.pm25Band(NaN), "unknown")
-  })
-})
-
 describe("model naming", () => {
   test("known codes become product names", () => {
     assert.equal(Dyson.modelName("455"), "Dyson Pure Hot+Cool Link")

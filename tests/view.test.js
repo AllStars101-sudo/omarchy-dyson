@@ -238,15 +238,16 @@ describe("readings", () => {
       "PM2.5,PM10,VOC,NO₂,HCHO,CO₂,AQI,Humidity,Filter")
   })
 
-  test("only PM2.5 is banded", () => {
-    const r = View.readings(model({ pm25: "3", pm10: "5", aqi: "4" }))
-    assert.equal(r.find(e => e.label === "PM2.5").band, true)
-    assert.equal(r.find(e => e.label === "PM10").band, false)
-    assert.equal(r.find(e => e.label === "AQI").band, false)
-  })
-
   test("null and undefined readings are omitted like empty ones", () => {
     assert.equal(View.readings(model({ pm25: null, voc: undefined, aqi: "", humidity: "" })).length, 0)
+  })
+
+  test("readings carry no emphasis flag, because nothing is emphasised", () => {
+    // The plugin paints entirely in the bar's foreground, so a reading is a
+    // label, a value and a unit — there is no band to colour by.
+    for (const entry of View.readings(model())) {
+      assert.equal("band" in entry, false)
+    }
   })
 
   test("readingText appends the unit only when there is one", () => {
@@ -254,14 +255,6 @@ describe("readings", () => {
     assert.equal(View.readingText({ value: "4", unit: "" }), "4")
   })
 
-  test("bandColorKey names a role rather than a colour", () => {
-    assert.equal(View.bandColorKey("good"), "foreground")
-    assert.equal(View.bandColorKey("fair"), "accent")
-    assert.equal(View.bandColorKey("poor"), "urgent")
-    assert.equal(View.bandColorKey("bad"), "urgent")
-    assert.equal(View.bandColorKey("unknown"), "foreground")
-    assert.equal(View.bandColorKey(undefined), "foreground")
-  })
 })
 
 describe("controls", () => {

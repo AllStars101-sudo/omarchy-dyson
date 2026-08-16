@@ -204,22 +204,6 @@ function percentageFromSpeed(speed, attrs) {
   return s === 0 ? 0 : Math.round(s * (100 / steps))
 }
 
-// --- air quality ----------------------------------------------------------
-
-// PM2.5 bands in µg/m³, following the WHO 2021 24-hour guidance the Dyson app
-// broadly tracks. Returned as a name so the QML side owns the colors.
-function pm25Band(value) {
-  // A missing reading arrives as "", and Number("") is 0 — which would band an
-  // absent sensor as pristine air. Reject blanks before coercing.
-  if (value === "" || value === null || value === undefined) return "unknown"
-  var v = Number(value)
-  if (!isFinite(v)) return "unknown"
-  if (v <= 12) return "good"
-  if (v <= 35) return "fair"
-  if (v <= 55) return "poor"
-  return "bad"
-}
-
 // --- model names ----------------------------------------------------------
 // HA's device registry records Dyson's numeric product type, not a name a
 // person would recognise. These are libdyson's published type codes; anything
@@ -337,4 +321,4 @@ function stalenessMs(states, fanEntity, now) {
 
 // QML imports this file directly and never defines `module`; the guard lets
 // node require() the same source so coverage instrumentation can see it.
-if (typeof module !== "undefined") module.exports = { companionEntity: companionEntity, deviceEntities: deviceEntities, discover: discover, hasPreset: hasPreset, historyStats: historyStats, isAutoMode: isAutoMode, isDysonFan: isDysonFan, listFans: listFans, modelName: modelName, newestUpdate: newestUpdate, parseHistory: parseHistory, percentageFromSpeed: percentageFromSpeed, pm25Band: pm25Band, primaryEntity: primaryEntity, resolveFan: resolveFan, sensorByClass: sensorByClass, sensorByName: sensorByName, serialFromName: serialFromName, slugOf: slugOf, speedFromPercentage: speedFromPercentage, stalenessMs: stalenessMs, stepsFor: stepsFor, MODEL_NAMES: MODEL_NAMES }
+if (typeof module !== "undefined") module.exports = { companionEntity: companionEntity, deviceEntities: deviceEntities, discover: discover, hasPreset: hasPreset, historyStats: historyStats, isAutoMode: isAutoMode, isDysonFan: isDysonFan, listFans: listFans, modelName: modelName, newestUpdate: newestUpdate, parseHistory: parseHistory, percentageFromSpeed: percentageFromSpeed, primaryEntity: primaryEntity, resolveFan: resolveFan, sensorByClass: sensorByClass, sensorByName: sensorByName, serialFromName: serialFromName, slugOf: slugOf, speedFromPercentage: speedFromPercentage, stalenessMs: stalenessMs, stepsFor: stepsFor, MODEL_NAMES: MODEL_NAMES }

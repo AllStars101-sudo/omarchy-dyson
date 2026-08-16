@@ -281,14 +281,6 @@ Panel {
   })
   readonly property var view: View.sections(viewModel)
 
-  readonly property string pmBand: Dyson.pm25Band(pm25)
-  readonly property color pmColor: {
-    switch (View.bandColorKey(pmBand)) {
-    case "accent": return Color.accent
-    case "urgent": return Color.urgent
-    }
-    return bar ? bar.barForeground : Color.foreground
-  }
 
   readonly property string barLabel: View.barLabel(viewModel)
 
@@ -363,7 +355,7 @@ Panel {
             Text {
               id: heroIcon
               text: "󰈐"
-              color: root.heating ? Color.urgent : (root.fanOn ? Color.accent : root.bar.foreground)
+              color: root.bar.foreground
               font.family: root.bar.fontFamily
               font.pixelSize: Style.font.display
               opacity: root.fanOn ? 1 : 0.5
@@ -616,7 +608,7 @@ Panel {
 
               readonly property var points: root.historyPoints
               readonly property var bounds: root.historyBounds
-              readonly property color line: root.pmColor
+              readonly property color line: root.bar.foreground
               onPointsChanged: requestPaint()
               onLineChanged: requestPaint()
 
@@ -706,10 +698,7 @@ Panel {
                   id: readingValue
                   anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                   text: View.readingText(parent.modelData)
-                  // Only PM2.5 is banded. The others have no comparably settled
-                  // thresholds, so colouring them would imply a judgement this
-                  // widget cannot actually make.
-                  color: parent.modelData.band ? root.pmColor : root.bar.foreground
+                  color: root.bar.foreground
                   font.family: root.bar.fontFamily; font.pixelSize: Style.font.body
                 }
               }
@@ -720,7 +709,7 @@ Panel {
             width: parent.width
             visible: root.view.filterWarning
             text: "󰀪  Filter needs replacing"
-            color: Color.urgent
+            color: root.bar.foreground
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.caption
           }

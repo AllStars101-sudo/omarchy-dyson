@@ -93,35 +93,29 @@ function sections(m) {
 
 // --- readings -------------------------------------------------------------
 
-// Only PM2.5 is banded. The others have no comparably settled thresholds, so
-// colouring them would imply a judgement this plugin cannot actually make.
+// The plugin paints nothing in its own colours: every surface uses the bar's
+// foreground, so it inherits whatever theme is active rather than fighting it.
+// Readings therefore carry no emphasis flag — only a label, a value and a unit.
 function readings(m) {
   var out = []
-  function add(label, value, unit, band) {
+  function add(label, value, unit) {
     if (value !== "" && value !== null && value !== undefined)
-      out.push({ label: label, value: value, unit: unit, band: !!band })
+      out.push({ label: label, value: value, unit: unit })
   }
-  add("PM2.5", m.pm25, "µg/m³", true)
-  add("PM10", m.pm10, "µg/m³", false)
-  add("VOC", m.voc, "", false)
-  add("NO₂", m.no2, "", false)
-  add("HCHO", m.hcho, "mg/m³", false)
-  add("CO₂", m.co2, "ppm", false)
-  add("AQI", m.aqi, "", false)
-  add("Humidity", m.humidity, "%", false)
-  add("Filter", m.hepaFilter, "%", false)
+  add("PM2.5", m.pm25, "µg/m³")
+  add("PM10", m.pm10, "µg/m³")
+  add("VOC", m.voc, "")
+  add("NO₂", m.no2, "")
+  add("HCHO", m.hcho, "mg/m³")
+  add("CO₂", m.co2, "ppm")
+  add("AQI", m.aqi, "")
+  add("Humidity", m.humidity, "%")
+  add("Filter", m.hepaFilter, "%")
   return out
 }
 
 function readingText(entry) {
   return entry.value + (entry.unit ? " " + entry.unit : "")
-}
-
-// Colour is named rather than valued so the QML side owns the palette.
-function bandColorKey(band) {
-  if (band === "fair") return "accent"
-  if (band === "poor" || band === "bad") return "urgent"
-  return "foreground"
 }
 
 // --- controls -------------------------------------------------------------
@@ -198,7 +192,7 @@ if (typeof module !== "undefined") module.exports = {
   FAN_ICON: FAN_ICON, barLabel: barLabel, barActive: barActive, barDimmed: barDimmed,
   statusLine: statusLine, heroSubtitle: heroSubtitle, staleMinutes: staleMinutes,
   isFiniteNumber: isFiniteNumber, sections: sections, readings: readings,
-  readingText: readingText, bandColorKey: bandColorKey, hvacOptions: hvacOptions,
+  readingText: readingText, hvacOptions: hvacOptions,
   deviceOptions: deviceOptions, spinDurationMs: spinDurationMs,
   placements: placements, connectionStatus: connectionStatus
 }
