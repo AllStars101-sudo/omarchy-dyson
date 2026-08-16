@@ -36,9 +36,19 @@ for f in *.qml; do
   # fails the build. Tolerating a category is a deliberate act, not a catch-all.
   filtered=$(grep -E "^(Error|Warning):" <<<"$out" \
     | grep -viE "\[(unqualified|unresolved-type|inheritance-cycle|missing-property|uncreatable-type|missing-type|import)\]" \
-    | grep -viE "no matching signal found for handler|is not a type|was not found|Cannot load|no matching import" || true)
+    | grep -viE "no matching signal found for handler|is not a type|was not found|Cannot load|no matching import" \
+    | grep -viE "(Quickshell|qs\.Ui|qs\.Commons)" || true)
+
+  # Base modules failing to import means the linter cannot see QtQuick at all,
+  # so nothing below it is meaningful. Fail loudly rather than let the run go
+  # green on a lint that checked nothing.
+  if grep -qE "Failed to import (QtQuick|QtQml)" <<<"$out"; then
+    echo "FAIL $f: qmllint cannot import QtQuick — install the qml6-module-qtquick packages"
+    fail=1
+    continue
+  fi
   if [ -n "$filtered" ]; then
-    echo "FAIL $f"; echo "$filtered" | head -8; fail=1
+    echo "FAIL $f"; { echo "$filtered" | head -8; } 2>/dev/null; fail=1
   else
     echo "ok   $f"
   fi

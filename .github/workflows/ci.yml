@@ -53,10 +53,18 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install qmllint
+      # qmllint needs the QtQuick QML modules themselves, not just the binary:
+      # without them every file fails to import QtQuick and the parse check has
+      # nothing left to check.
+      - name: Install qmllint and the QtQuick modules
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qt6-declarative-dev-tools
+          sudo apt-get install -y --no-install-recommends \
+            qt6-declarative-dev-tools \
+            qml6-module-qtquick \
+            qml6-module-qtquick-controls \
+            qml6-module-qtquick-templates \
+            qml6-module-qtqml-workerscript
 
       - name: Structural check
         run: QMLLINT=$(command -v qmllint6 || command -v qmllint) ./scripts/check-qml.sh
