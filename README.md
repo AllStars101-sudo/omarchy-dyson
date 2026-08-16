@@ -180,7 +180,7 @@ tooltip text from the bar icon, which names the failure.
 ## Development
 
 ```bash
-npm test          # 123 tests
+npm test          # 124 tests
 npm run coverage  # tests + the 100% gate
 npm run lint        # manifest, cross-file symbols, QML syntax
 npm run lint:strict # the above plus full qmllint semantics (needs Omarchy)
