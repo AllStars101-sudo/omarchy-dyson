@@ -195,6 +195,25 @@ function placements(barLayout, pluginId) {
   return out
 }
 
+// Which settings tab a summon payload asks for, or "" when the summon did not
+// come from this plugin's own settings button.
+//
+// Declaring an `overlay` kind opts a plugin out of Omarchy's bar-widget summon
+// path, so the shell's generic toggle (the Super+Ctrl+N bar hotkey, and
+// `omarchy-shell shell toggle <id>`) lands on the overlay rather than on the
+// panel. Those arrive with an empty payload; the settings button always names a
+// tab. Anything without a tab is a request for the panel.
+function settingsTab(payloadJson) {
+  var payload = {}
+  try {
+    payload = JSON.parse(payloadJson || "{}") || {}
+  } catch (e) {
+    return ""
+  }
+  if (payload.tab === "devices" || payload.tab === "connection") return payload.tab
+  return ""
+}
+
 function connectionStatus(m) {
   if (m.notice) return { text: m.notice, error: false }
   if (!m.hasService) return { text: "", error: false }
@@ -213,5 +232,5 @@ if (typeof module !== "undefined") module.exports = {
   isFiniteNumber: isFiniteNumber, sections: sections, readings: readings,
   readingText: readingText, readingColorKey: readingColorKey, hvacOptions: hvacOptions,
   deviceOptions: deviceOptions, spinDurationMs: spinDurationMs,
-  placements: placements, connectionStatus: connectionStatus
+  placements: placements, connectionStatus: connectionStatus, settingsTab: settingsTab
 }

@@ -371,6 +371,23 @@ describe("settings", () => {
     assert.equal(View.placements(layout, "other.plugin").length, 0)
   })
 
+  test("settingsTab distinguishes a settings request from the bar hotkey", () => {
+    // Omarchy's Super+Ctrl+N hotkey and `omarchy-shell shell toggle <id>` both
+    // land on the overlay with an empty payload, because declaring an overlay
+    // kind opts the plugin out of the bar-widget summon path. Only a payload
+    // naming a tab came from the settings button.
+    assert.equal(View.settingsTab('{"tab":"connection"}'), "connection")
+    assert.equal(View.settingsTab('{"tab":"devices"}'), "devices")
+    assert.equal(View.settingsTab("{}"), "", "the bar hotkey wants the panel")
+    assert.equal(View.settingsTab(""), "")
+    assert.equal(View.settingsTab(null), "")
+    assert.equal(View.settingsTab(undefined), "")
+    assert.equal(View.settingsTab("not json"), "", "an unreadable payload is not a tab")
+    assert.equal(View.settingsTab("null"), "", "JSON null must not throw")
+    assert.equal(View.settingsTab('{"tab":"nonsense"}'), "", "an unknown tab is not honoured")
+    assert.equal(View.settingsTab('{"other":1}'), "")
+  })
+
   test("connection status", () => {
     const base = { hasService: true, configured: true, ready: true, fanCount: 1,
                    lastError: "", notice: "" }

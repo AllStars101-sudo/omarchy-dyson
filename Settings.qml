@@ -40,11 +40,15 @@ Item {
   readonly property bool hasToken: !!service && service.token !== ""
 
   function open(payloadJson) {
-    var next = "connection"
-    try {
-      var payload = JSON.parse(payloadJson || "{}")
-      if (payload.tab === "devices" || payload.tab === "connection") next = payload.tab
-    } catch (e) { /* an unreadable payload just means the default tab */ }
+    var next = View.settingsTab(payloadJson)
+    if (!next) {
+      // Not a settings request. Omarchy's bar hotkey and `omarchy-shell shell
+      // toggle <id>` route here rather than to the bar widget, because
+      // declaring an overlay kind opts this plugin out of the bar-widget summon
+      // path. Hand it back to the panel the user actually asked for.
+      root.showPanelInstead()
+      return
+    }
     root.tab = next
     // Re-apply after the window builds. On the first summon the card does not
     // exist yet, and the tab selector emits its own selection as it initialises
@@ -54,6 +58,19 @@ Item {
     root.tokenDraft = ""
     root.notice = ""
     root.opened = true
+  }
+
+  function showPanelInstead() {
+    var bar = shell && shell.bar ? shell.bar : null
+    if (bar && typeof bar.isBarWidgetOpen === "function"
+        && typeof bar.summonBarWidget === "function"
+        && typeof bar.hideBarWidget === "function") {
+      // Toggle, so the hotkey keeps closing what it opened.
+      if (bar.isBarWidgetOpen(root.pluginId)) bar.hideBarWidget(root.pluginId)
+      else bar.summonBarWidget(root.pluginId)
+    }
+    root.opened = false
+    if (shell && typeof shell.hide === "function") shell.hide(root.pluginId)
   }
 
   function close() { root.opened = false }

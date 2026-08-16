@@ -58,6 +58,9 @@ Removing the plugin does not remove your token from the keyring. The
 | Panel | Oscillation, night mode, auto mode |
 | Panel | PM2.5 graph, air quality readings, filter life |
 
+Omarchy's bar hotkey (Super+Ctrl+N for the Nth panel in a section) opens the
+panel, not the settings overlay.
+
 Over IPC, for keybindings:
 
 ```bash
