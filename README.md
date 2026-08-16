@@ -39,6 +39,12 @@ Then click the fan icon and enter your Home Assistant address and a long-lived
 access token (Profile → Security → Long-lived access tokens → Create token).
 The token goes to your system keyring, never to a config file.
 
+The address is whatever you use in a browser — `http://homeassistant.local:8123`,
+`http://192.168.1.20:8123`, `https://ha.example.com`, or `http://localhost:8123`
+if Home Assistant runs on this machine. **Include the scheme**: an address typed
+without one is assumed to be `https`, and a default Home Assistant serves plain
+`http` on port 8123.
+
 ## Remove
 
 ```bash
@@ -129,7 +135,7 @@ work" is the honest claim, not "supported". If your device misbehaves, please
 open an issue with the output of:
 
 ```bash
-curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8123/api/states \
+curl -s -H "Authorization: Bearer $TOKEN" "$HA_URL/api/states" \
   | jq '[.[] | select(.entity_id|test("dyson"))]'
 ```
 

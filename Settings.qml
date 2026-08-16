@@ -222,7 +222,7 @@ Item {
             TextField {
               width: parent.width
               text: root.urlDraft
-              placeholderText: "http://localhost:8123"
+              placeholderText: "http://homeassistant.local:8123"
               foreground: Color.menu.text
               onTextChanged: root.urlDraft = text
             }
@@ -257,6 +257,19 @@ Item {
               enabled: root.draftValid
               opacity: root.draftValid ? 1 : 0.45
               onTextChanged: root.tokenDraft = text
+            }
+
+            Text {
+              width: parent.width
+              // Worth saying: an address typed without a scheme is assumed to
+              // be https, and a default Home Assistant serves plain http on
+              // 8123 — so the http:// matters more often than people expect.
+              text: "Include http:// or https://. An address with neither is assumed to be https."
+              color: Color.menu.text
+              opacity: 0.6
+              wrapMode: Text.WordWrap
+              font.family: Style.font.family
+              font.pixelSize: Style.font.caption
             }
 
             Text {
