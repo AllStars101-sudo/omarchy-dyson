@@ -122,24 +122,73 @@ integration's reconnect button is pressed, at most once every two minutes.
 
 ## Model support
 
-Verified against real hardware:
+**Verified against real hardware**
 
-| Model | Type | Status |
+| Model | Type | What was exercised |
 |---|---|---|
-| Pure Hot+Cool Link (HP02) | 455 | Tested |
+| Pure Hot+Cool Link (HP02) | 455 | Everything: heat, speed, oscillation, night mode, air quality, graph, staleness, settings |
 
-Everything else is **inferred** from the hass-dyson entity contract and tested
-against fixtures built from it, not against a physical device. That covers
-TP/DP cool models, HP heaters, PH humidifiers and BP Big+Quiet — but "should
-work" is the honest claim, not "supported". If your device misbehaves, please
-open an issue with the output of:
+**Untested, should work** — each has a mock device in `tests/fixtures/synthetic.js`
+built from hass-dyson's entity definitions, so the plugin is asserted to render
+the right controls for it. No physical unit has ever been connected.
+
+| Model | Type | What the mock covers |
+|---|---|---|
+| Purifier Cool Formaldehyde (TP09) | 438E | Cool-only, auto as a *switch*, formaldehyde, PM10/NO₂, oscillation angle, both filters |
+| Purifier Hot+Cool (HP07) | 527K | Heat via a climate entity, heating-mode select |
+| Pure Humidify+Cool (PH01) | 358 | Humidifier entity, humidity target, water hardness, no heat |
+| Purifier Big+Quiet (BP) | 664 | A non-ten-speed dial (12.5% steps → 8 speeds) |
+| A minimal Link-era device | — | Near-empty: every optional control must stay hidden rather than render dead |
+
+**Recognised but not modelled** — these product codes resolve to a proper name,
+and capability discovery should handle them the same way, but no fixture
+represents them: 358E, 358K, 438, 438K, 469, 475, 520, 527, 527E.
+
+Anything not in the table at all still works; an unknown code simply shows as
+`Dyson <code>` rather than a product name, and every control is discovered from
+the entities Home Assistant exposes rather than from the model.
+
+Because none of the above is hardware-verified, **"should work" is the honest
+claim, not "supported"**. If your device misbehaves, please open an issue with:
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" "$HA_URL/api/states" \
   | jq '[.[] | select(.entity_id|test("dyson"))]'
 ```
 
+That dump is enough to add your device as a fixture and fix it blind, which is
+how every model above got its coverage.
+
 Air treatment only. Dyson robot vacuums and lights are out of scope.
+
+## Contributing
+
+Contributions are welcome, and a states dump from a model nobody here owns is
+the single most useful one — see above. Everything else:
+
+- `npm run check` runs what CI runs: tests, the per-file 100% coverage gate,
+  and the manifest/symbol/QML checks. It should pass before you open a pull
+  request.
+- Logic goes in `Dyson.js`, `View.js`, `Config.js` or `Origin.js`, not in the
+  QML. That is not style: those four are the only files that can be tested
+  outside a running Omarchy shell, and the coverage gate refuses to let them
+  slip below 100%. The view logic was moved out of `Panel.qml` for exactly this
+  reason, and the reconnect rate limiter followed once it turned out the
+  README was promising behaviour nothing could verify.
+- New device support means a fixture, not a special case. If a model needs a
+  branch on its product code, that is usually a sign the capability should be
+  discovered from an entity instead.
+- Write tests that would fail against a wrong implementation. An earlier version
+  of this suite asserted that `auto_mode` does not match
+  `firmware_auto_update` — true under every possible matching strategy, so it
+  could not fail. Fixtures like `nearMiss` and `prefixSiblings` exist to stress
+  the matchers rather than agree with them.
+- Run `npm run lint:strict` if you have Omarchy: it catches QML problems CI
+  cannot see, since a CI runner has no Quickshell to resolve types against.
+
+Bug reports that include what you expected, what happened, and the tooltip text
+from the bar icon are the easiest to act on — the tooltip says which of the
+several possible failures occurred.
 
 ## Development
 
