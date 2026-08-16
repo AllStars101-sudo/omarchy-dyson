@@ -144,13 +144,42 @@ Air treatment only. Dyson robot vacuums and lights are out of scope.
 ## Development
 
 ```bash
-node tests/dyson.test.js
+npm test        # 107 tests
+npm run coverage  # tests + the 100% gate
+npm run lint      # QML parse, manifest, entry points
+npm run check     # all three, as CI runs them
 ```
 
-Pure logic lives in `Dyson.js`, `Config.js` and `Origin.js` so it can be tested
-under plain node. `tests/fixtures/hp02-455.json` is a real states dump;
-`tests/fixtures/synthetic.js` holds hand-built dumps for models not available
-here.
+There are no dependencies; `package.json` exists only for the scripts.
+
+### What is and is not covered
+
+The logic and view layers are held at **100% line, branch and function
+coverage**, enforced per file by `scripts/check-coverage.js`:
+
+| File | What it holds |
+|---|---|
+| `Dyson.js` | Entity discovery, capability mapping, speed, banding, model names, history, liveness |
+| `View.js` | Every view decision — bar label, status text, which rows exist, reading list, control options |
+| `Config.js` | Config parsing, clamping, serialization |
+| `Origin.js` | URL normalisation, the identity the keyring scopes tokens by |
+
+The QML is **not** covered, and the coverage number does not claim otherwise.
+`Panel.qml`, `Settings.qml`, `Service.qml` and `CredentialManager.qml` hold
+polling, HTTP, the keyring, IPC and rendering — none of which can run outside a
+live Omarchy shell. They are checked structurally by `scripts/check-qml.sh`
+(parse, entry points, schema/default agreement) and verified by hand against
+real hardware. View *logic* was deliberately moved out of `Panel.qml` into
+`View.js` precisely so it could be tested; what remains in QML is layout and
+plumbing.
+
+### Fixtures
+
+`tests/fixtures/hp02-455.json` is a real `/api/states` dump from a Dyson Pure
+Hot+Cool Link. `tests/fixtures/synthetic.js` holds hand-built dumps for models
+not available here, written from hass-dyson's entity definitions — they
+constrain the code, but they are not evidence that a real TP09 or PH01 behaves
+this way.
 
 After editing, restart the shell rather than trusting hot reload:
 

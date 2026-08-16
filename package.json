@@ -1,0 +1,13 @@
+{
+  "name": "omarchy-dyson-air",
+  "version": "0.1.0",
+  "description": "Dyson air treatment control for the Omarchy bar, via Home Assistant",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "coverage": "node --experimental-test-coverage --test-reporter=lcov --test-reporter-destination=lcov.info --test-reporter=spec --test-reporter-destination=stdout --test tests/*.test.js && node scripts/check-coverage.js lcov.info",
+    "lint": "./scripts/check-qml.sh",
+    "check": "npm run test && npm run coverage && npm run lint"
+  }
+}
