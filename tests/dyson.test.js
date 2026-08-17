@@ -701,3 +701,45 @@ describe("sweep aiming", () => {
       "missing angles fall back to the full travel")
   })
 })
+
+describe("snapping to a number entity's step", () => {
+  test("a slider's every-integer output lands on the entity's step", () => {
+    // PanelSlider reports every integer the cursor passes over. A 15-minute
+    // dial that is sent 37 shows a value the device will never report back.
+    assert.equal(Dyson.snapToStep(37, 15, 0, 540), 30)
+    assert.equal(Dyson.snapToStep(38, 15, 0, 540), 45)
+    assert.equal(Dyson.snapToStep(0, 15, 0, 540), 0)
+    assert.equal(Dyson.snapToStep(540, 15, 0, 540), 540)
+  })
+
+  test("the step is measured from the minimum, not from zero", () => {
+    // An entity running 5..100 in steps of 10 holds 5, 15, 25 — never 10.
+    assert.equal(Dyson.snapToStep(11, 10, 5, 100), 15)
+    assert.equal(Dyson.snapToStep(6, 10, 5, 100), 5)
+  })
+
+  test("the result stays inside the entity's own range", () => {
+    assert.equal(Dyson.snapToStep(9999, 15, 0, 540), 540)
+    assert.equal(Dyson.snapToStep(-40, 15, 0, 540), 0)
+  })
+
+  test("a missing step or bound does not produce nonsense", () => {
+    assert.equal(Dyson.snapToStep(37, undefined, 0, 540), 37, "no step means every value")
+    assert.equal(Dyson.snapToStep(37, 0, 0, 540), 37, "a zero step must not divide by zero")
+    assert.equal(Dyson.snapToStep(37, -5, 0, 540), 37)
+    assert.equal(Dyson.snapToStep(37, 15, undefined, undefined), 30, "no bounds, still snapped")
+  })
+
+  test("blanks fall back to the minimum rather than becoming zero", () => {
+    // Number("") and Number(null) are both 0, which on an entity whose minimum
+    // is 5 is not even a legal value.
+    assert.equal(Dyson.snapToStep("", 15, 5, 540), 5)
+    assert.equal(Dyson.snapToStep(null, 15, 5, 540), 5)
+    assert.equal(Dyson.snapToStep(undefined, 15, 5, 540), 5)
+    assert.equal(Dyson.snapToStep("x", 15, 5, 540), 5)
+    assert.equal(Dyson.snapToStep("45", 15, 0, 540), 45, "a string state still parses")
+    // With no minimum declared either, zero is the only sensible floor.
+    assert.equal(Dyson.snapToStep("", 15, undefined, undefined), 0)
+    assert.equal(Dyson.snapToStep("x", 15, undefined, undefined), 0)
+  })
+})

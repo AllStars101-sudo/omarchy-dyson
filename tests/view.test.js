@@ -635,3 +635,16 @@ describe("on/off chips", () => {
       [{ value: "on", label: "On" }, { value: "off", label: "Off" }])
   })
 })
+
+describe("a sleep timer request that has not landed", () => {
+  test("the label says the request is outstanding", () => {
+    // hass-dyson only writes the entity back for 0, so a request that never
+    // echoes would otherwise look like a slider that did nothing at all.
+    assert.equal(View.sleepTimerLabel(45, true), "45m · setting…")
+    assert.equal(View.sleepTimerLabel(45, false), "45m")
+    assert.equal(View.sleepTimerLabel(45), "45m", "no flag reads as settled")
+    assert.equal(View.sleepTimerLabel(0, true), "Off · setting…")
+    assert.equal(View.sleepTimerLabel(90, true), "1h 30m · setting…")
+    assert.equal(View.sleepTimerLabel("", true), "", "a blank stays blank, pending or not")
+  })
+})

@@ -104,6 +104,23 @@ Panel {
     var v = Number((stateOf(caps.sleepTimer) || {}).state)
     return isFinite(v) ? Math.round(v) : 0
   }
+  // hass-dyson only writes this entity back for a value of 0; anything else
+  // waits on the device echoing `sltm`, which some models never do. Without a
+  // held value the knob springs back the instant it is let go and the control
+  // reads as broken even where the command landed.
+  property int sleepTimerRequest: -1
+  readonly property int sleepTimerShown: sleepTimerRequest >= 0 ? sleepTimerRequest : sleepTimerMinutes
+  readonly property bool sleepTimerPending: sleepTimerRequest >= 0
+    && sleepTimerRequest !== sleepTimerMinutes
+
+  // The hold expires so the panel goes back to reporting the device rather than
+  // the request. Longer than the integration's own 20s settle.
+  Timer {
+    id: sleepTimerHold
+    interval: 45000
+    onTriggered: root.sleepTimerRequest = -1
+  }
+
   readonly property bool monitoring: (stateOf(caps.monitorSwitch) || {}).state === "on"
   readonly property bool firmwareAuto: (stateOf(caps.firmwareAutoUpdate) || {}).state === "on"
 
@@ -195,6 +212,11 @@ Panel {
 
   onEntityStatesChanged: {
     refreshLiveness()
+    // The device caught up, so stop showing the request and show the device.
+    if (sleepTimerRequest >= 0 && sleepTimerMinutes === sleepTimerRequest) {
+      sleepTimerRequest = -1
+      sleepTimerHold.stop()
+    }
     if (fanEntity && modelName === "" && service)
       service.fetchModel(fanEntity, function(name) { root.modelName = name })
   }
@@ -272,9 +294,21 @@ Panel {
     if (!actionable || !entityId) return
     service.callService("switch", on ? "turn_on" : "turn_off", { entity_id: entityId })
   }
-  function setNumber(entityId, value) {
+  function setNumber(entityId, value, attrs) {
     if (!actionable || !entityId) return
-    service.callService("number", "set_value", { entity_id: entityId, value: value })
+    // Snapped to the entity's own step: a slider reports every integer under
+    // the cursor, and the entity only ever holds multiples of its step.
+    var a = attrs || ({})
+    var next = Dyson.snapToStep(value, a.step, a.min, a.max)
+    service.callService("number", "set_value", { entity_id: entityId, value: next })
+    return next
+  }
+
+  function setSleepTimer(value) {
+    var next = setNumber(caps.sleepTimer, value, sleepTimerAttrs)
+    if (next === undefined) return
+    sleepTimerRequest = next
+    sleepTimerHold.restart()
   }
   function setDirection(direction) {
     if (!actionable || !directionSupported) return
@@ -833,7 +867,7 @@ Panel {
             width: parent.width
             visible: root.view.sleepTimer
             bar: root.bar
-            label: "\u{f04b2}  " + View.sleepTimerLabel(root.sleepTimerMinutes)
+            label: "\u{f04b2}  " + View.sleepTimerLabel(root.sleepTimerShown, root.sleepTimerPending)
 
             PanelSlider {
               width: Style.space(150)
@@ -843,8 +877,8 @@ Panel {
               maximum: Number(root.sleepTimerAttrs.max || 540)
               step: Number(root.sleepTimerAttrs.step || 15)
               integer: true
-              value: root.sleepTimerMinutes
-              onReleased: function(v) { root.setNumber(root.caps.sleepTimer, v) }
+              value: root.sleepTimerShown
+              onReleased: function(v) { root.setSleepTimer(v) }
             }
           }
 

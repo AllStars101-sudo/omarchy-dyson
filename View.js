@@ -242,14 +242,18 @@ function airflowOptions(fanModes) {
 
 // Minutes as the device counts them. Zero is off rather than "0m", which would
 // read as a timer about to fire.
-function sleepTimerLabel(minutes) {
+function sleepTimerLabel(minutes, pending) {
   if (!isFiniteNumber(minutes)) return ""
   var m = Math.max(0, Math.round(Number(minutes)))
-  if (m === 0) return "Off"
-  if (m < 60) return m + "m"
-  var h = Math.floor(m / 60)
-  var rest = m % 60
-  return rest ? h + "h " + rest + "m" : h + "h"
+  var text = "Off"
+  if (m > 0) {
+    var h = Math.floor(m / 60)
+    var rest = m % 60
+    text = m < 60 ? m + "m" : (rest ? h + "h " + rest + "m" : h + "h")
+  }
+  // Home Assistant does not echo this value back on every model, so a request
+  // that never lands would otherwise look like a slider that does nothing.
+  return pending ? text + " · setting…" : text
 }
 
 // What the current sweep range means in words. Absolute to the machine's own

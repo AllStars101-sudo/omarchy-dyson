@@ -143,6 +143,21 @@ entities on purpose. Those exist only on models advertising an
 `AdvanceOscillation` capability; the service has no such gate, so aiming works
 on every model rather than the subset that happens to expose the entities.
 
+## Sleep timer
+
+The slider holds where you put it and shows `setting…` until Home Assistant
+reports the device agreeing, then goes back to reporting the device. After 45
+seconds it gives up waiting and shows whatever the device says.
+
+That is not decoration. `hass-dyson` writes the sleep timer entity back only
+for a value of zero; any other value waits on the device echoing `sltm`
+through MQTT. On the HP02 here, over a cloud connection, that echo never
+arrives — neither `number.set_value` nor the integration's own
+`hass_dyson.set_sleep_timer` moves the entity off `0`, and the fan's own
+`sleep_timer` attribute does not move either. So on this device the control
+sends the command and then honestly reverts. Other models may well be fine;
+this is upstream of the plugin either way.
+
 ## Staleness
 
 Home Assistant keeps serving the last state it saw after a device's MQTT session

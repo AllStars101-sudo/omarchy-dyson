@@ -324,6 +324,23 @@ function angleRange(low, high, moved) {
   return l <= h ? { low: l, high: h } : { low: h, high: l }
 }
 
+// A slider reports every integer the cursor passes over, but a Home Assistant
+// number declares a step and its entity only ever holds multiples of it. Posting
+// 37 to a 15-minute dial leaves the panel showing a value the device will never
+// report back.
+function snapToStep(value, step, minimum, maximum) {
+  // Number("") and Number(null) are 0, so blanks are rejected before arithmetic.
+  if (value === "" || value === null || value === undefined) return Number(minimum) || 0
+  var n = Number(value)
+  if (!isFinite(n)) return Number(minimum) || 0
+  var s = Number(step)
+  if (!isFinite(s) || s <= 0) s = 1
+  var lo = isFinite(Number(minimum)) ? Number(minimum) : 0
+  var hi = isFinite(Number(maximum)) ? Number(maximum) : n
+  n = lo + Math.round((n - lo) / s) * s
+  return Math.max(lo, Math.min(hi, n))
+}
+
 function pm25Band(value) {
   // A missing reading arrives as "", and Number("") is 0 — which would band an
   // absent sensor as pristine air. Reject blanks before coercing.
@@ -487,5 +504,6 @@ function stalenessMs(states, fanEntity, now) {
 if (typeof module !== "undefined") module.exports = { pm25Band: pm25Band, shouldReconnect: shouldReconnect, isStale: isStale,
   RECONNECT_INTERVAL_MS: RECONNECT_INTERVAL_MS, airQualityAlarm: airQualityAlarm, companionEntity: companionEntity, deviceEntities: deviceEntities, discover: discover, hasPreset: hasPreset, historyStats: historyStats, isAutoMode: isAutoMode, isDysonFan: isDysonFan, listFans: listFans, modelName: modelName, newestUpdate: newestUpdate, parseHistory: parseHistory, percentageFromSpeed: percentageFromSpeed, primaryEntity: primaryEntity, resolveFan: resolveFan, sensorByClass: sensorByClass, sensorByName: sensorByName, serialFromName: serialFromName, slugOf: slugOf, speedFromPercentage: speedFromPercentage, stalenessMs: stalenessMs, stepsFor: stepsFor, MODEL_NAMES: MODEL_NAMES,
   faults: faults, activeFaults: activeFaults, clampAngle: clampAngle,
+  snapToStep: snapToStep,
   anglePresets: anglePresets, activeAnglePreset: activeAnglePreset, angleRange: angleRange,
   ANGLE_MIN: ANGLE_MIN, ANGLE_MAX: ANGLE_MAX, ANGLE_STEP: ANGLE_STEP }
