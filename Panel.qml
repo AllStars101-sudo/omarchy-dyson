@@ -644,12 +644,14 @@ Panel {
           PanelSectionHeader {
             width: parent.width
             text: "Speed"
+            visible: root.view.speed
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
           }
 
           PanelSlider {
             width: parent.width
+            visible: root.view.speed
             bar: root.bar
             enabled: root.actionable
             opacity: root.actionable ? 1 : 0.4
@@ -669,6 +671,7 @@ Panel {
           // used to say.
           Flow {
             width: parent.width
+            visible: root.view.modes
             spacing: Style.space(6)
 
             Button {
@@ -777,17 +780,6 @@ Panel {
             options: View.selectOptions(root.heatingModeOptions)
             value: root.heatingModeValue
             onChanged: function(v) { root.setSelectOption(root.caps.heatingMode, v) }
-          }
-
-          ChipsRow {
-            width: parent.width
-            visible: root.view.waterHardness
-            bar: root.bar
-            actionable: root.actionable
-            label: "Water"
-            options: View.selectOptions(root.waterHardnessOptions)
-            value: root.waterHardnessValue
-            onChanged: function(v) { root.setSelectOption(root.caps.waterHardness, v) }
           }
 
           LabelledRow {
@@ -1026,8 +1018,20 @@ Panel {
             }
           }
 
-          // Set-once settings live here rather than in the toolbar: they are
-          // not things anyone reaches for while adjusting a fan.
+          // Set-once settings live here rather than among the controls above:
+          // they are not things anyone reaches for while adjusting a fan, and
+          // they stay valid on a device that is switched off.
+          ChipsRow {
+            width: parent.width
+            visible: root.view.details && root.detailsOpen && root.view.waterHardness
+            bar: root.bar
+            actionable: root.actionable
+            label: "Water"
+            options: View.selectOptions(root.waterHardnessOptions)
+            value: root.waterHardnessValue
+            onChanged: function(v) { root.setSelectOption(root.caps.waterHardness, v) }
+          }
+
           ChipsRow {
             width: parent.width
             visible: root.view.details && root.detailsOpen && root.view.monitoring

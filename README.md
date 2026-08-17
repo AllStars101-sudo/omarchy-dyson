@@ -63,7 +63,9 @@ Removing the plugin does not remove your token from the keyring. The
 | Panel | Extras: faults, filters, connection, schedule, continuous monitoring, firmware auto-update, filter reset |
 
 Every one of those is drawn only when the device has it. Nothing is greyed out;
-a control that cannot act is not there.
+a control that cannot act is not there. For the same reason, everything that
+shapes moving air collapses while the fan is off — power, the readings and the
+set-once settings in Extras are what remain.
 
 The panel does not scroll. A bar dropdown gives no hint that it could, so the
 controls a device supports have to fit: the frequent ones are icons with

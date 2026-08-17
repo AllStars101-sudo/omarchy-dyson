@@ -83,6 +83,10 @@ function isFiniteNumber(v) {
 
 function sections(m) {
   var hasClimate = !!m.climateEntity && (m.hvacModes || []).length > 0
+  // Nothing that shapes moving air has anything to shape while the fan is off.
+  // Power and the readings stay; the rest collapses rather than sitting there
+  // as a row of controls with no effect to observe.
+  var running = !!m.fanOn
   return {
     // The device switcher would silently disagree with a pinned widget's own
     // settings, so it appears only when the widget is following autodetect.
@@ -91,24 +95,32 @@ function sections(m) {
     // Off/Fan/Heat subsumes power on a heater: the climate entity's "off" is
     // the same off, and two controls could disagree about the device state.
     powerToggle: !hasClimate,
+    speed: running,
     targetTemp: hasClimate && !!m.heating,
     humidifier: !!m.humidifierEntity,
     // A humidity target on a humidifier that is off has no effect to observe.
     humiditySlider: !!m.humidifierEntity && !!m.humidifying,
+    // The icon toolbar as a whole: oscillation always sits in it, so it exists
+    // whenever the fan is running.
+    modes: running,
     // A single airflow mode is not a choice, so the row needs two.
-    airflow: airflowOptions(m.fanModes).length > 1,
+    airflow: running && airflowOptions(m.fanModes).length > 1,
     // An angle chosen while the head is still has nothing to observe, so the
     // width row follows the oscillation toggle. Tilt is a separate axis and
     // does not.
-    oscillationAngle: selectOptions(m.angleOptions).length > 0 && !!m.oscillating,
-    tilt: selectOptions(m.tiltOptions).length > 0,
-    nightMode: !!m.nightSwitch,
-    autoMode: !!m.autoSupported,
-    sleepTimer: !!m.sleepTimerEntity,
+    oscillationAngle: running && selectOptions(m.angleOptions).length > 0 && !!m.oscillating,
+    tilt: running && selectOptions(m.tiltOptions).length > 0,
+    nightMode: running && !!m.nightSwitch,
+    autoMode: running && !!m.autoSupported,
+    sleepTimer: running && !!m.sleepTimerEntity,
+    heatingMode: running && (m.heatingModeOptions || []).length > 1,
+    direction: running && !!m.directionSupported,
+    // Set-once settings, not things that shape running airflow. They live in
+    // Extras and are as valid to change on a device that is off.
     monitoring: !!m.monitorSwitch,
-    heatingMode: (m.heatingModeOptions || []).length > 1,
     waterHardness: (m.waterHardnessOptions || []).length > 1,
-    direction: !!m.directionSupported,
+    // The sensors keep reporting with the fan off whenever continuous
+    // monitoring is on, so the readings are not gated on it running.
     airQuality: readings(m).length > 0,
     graph: (m.historyPoints || 0) > 1,
     filterWarning: !!m.filterDue,

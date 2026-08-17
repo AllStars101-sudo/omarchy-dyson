@@ -292,6 +292,7 @@ describe("which rows exist", () => {
     }))
     assert.deepEqual({ ...s }, {
       deviceSwitcher: false, climate: false, powerToggle: true, targetTemp: false,
+      speed: true, modes: true,
       humidifier: false, humiditySlider: false, airflow: false,
       oscillationAngle: false, tilt: false,
       nightMode: false, autoMode: false, sleepTimer: false, monitoring: false,
@@ -608,5 +609,55 @@ describe("a sleep timer request that has not landed", () => {
     assert.equal(View.sleepTimerLabel(0, true), "Off · setting…")
     assert.equal(View.sleepTimerLabel(90, true), "1h 30m · setting…")
     assert.equal(View.sleepTimerLabel("", true), "", "a blank stays blank, pending or not")
+  })
+})
+
+describe("a fan that is off", () => {
+  const off = over => model(Object.assign({
+    fanOn: false, oscillating: true,
+    nightSwitch: "switch.d_night_mode", autoSupported: true,
+    sleepTimerEntity: "number.d_sleep_timer", directionSupported: true,
+    fanModes: ["focus", "diffuse"], angleOptions: ["45°", "350°"],
+    tiltOptions: ["0°", "50°"], heatingModeOptions: ["Off", "Heating"]
+  }, over || {}))
+
+  test("everything that shapes moving air collapses", () => {
+    // Not greyed: the panel's rule throughout is that a control with no effect
+    // to observe is absent, and a fan that is off observes nothing.
+    const s = View.sections(off())
+    for (const key of ["speed", "modes", "airflow", "oscillationAngle", "tilt",
+                       "nightMode", "autoMode", "sleepTimer", "heatingMode", "direction"]) {
+      assert.equal(s[key], false, `${key} must collapse with the fan off`)
+    }
+  })
+
+  test("the same device running shows all of it", () => {
+    // The mirror of the above: without this, a predicate stuck at false would
+    // pass the collapse test while hiding the control permanently.
+    const s = View.sections(off({ fanOn: true }))
+    for (const key of ["speed", "modes", "airflow", "oscillationAngle", "tilt",
+                       "nightMode", "autoMode", "sleepTimer", "heatingMode", "direction"]) {
+      assert.equal(s[key], true, `${key} must come back when the fan runs`)
+    }
+  })
+
+  test("power, readings and the set-once settings stay", () => {
+    // Turning it back on has to remain possible, the sensors keep reporting
+    // while continuous monitoring is on, and a maintenance setting is as valid
+    // to change on a device that is switched off.
+    const s = View.sections(off({
+      monitorSwitch: "switch.d_cm", waterHardnessOptions: ["Soft", "Hard"],
+      climateEntity: "", hvacModes: []
+    }))
+    assert.equal(s.powerToggle, true)
+    assert.equal(s.airQuality, true)
+    assert.equal(s.graph, true)
+    assert.equal(s.monitoring, true)
+    assert.equal(s.waterHardness, true)
+    assert.equal(s.details, false, "this model reports no diagnostics")
+  })
+
+  test("a heater keeps Off/Fan/Heat, which is how it is turned back on", () => {
+    assert.equal(View.sections(off()).climate, true)
   })
 })
