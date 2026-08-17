@@ -370,14 +370,15 @@ describe("speed", () => {
 
 describe("air quality", () => {
   test("WHO 2021 thresholds", () => {
+    // WHO 2021: 5 annual, 15 over 24 hours, 35 as Interim Target 1.
     assert.equal(Dyson.pm25Band(0), "good")
-    assert.equal(Dyson.pm25Band(12), "good")
-    assert.equal(Dyson.pm25Band(12.1), "fair")
-    assert.equal(Dyson.pm25Band(35), "fair")
-    assert.equal(Dyson.pm25Band(35.1), "poor")
-    assert.equal(Dyson.pm25Band(55), "poor")
-    assert.equal(Dyson.pm25Band(55.1), "bad")
-    assert.equal(Dyson.pm25Band("7"), "good", "states arrive as strings")
+    assert.equal(Dyson.pm25Band(5), "good")
+    assert.equal(Dyson.pm25Band(5.1), "fair")
+    assert.equal(Dyson.pm25Band(15), "fair")
+    assert.equal(Dyson.pm25Band(15.1), "poor")
+    assert.equal(Dyson.pm25Band(35), "poor")
+    assert.equal(Dyson.pm25Band(35.1), "bad")
+    assert.equal(Dyson.pm25Band("4"), "good", "states arrive as strings")
   })
 
   test("a missing reading is never a good reading", () => {
@@ -388,8 +389,11 @@ describe("air quality", () => {
 
   test("the alarm fires only past the guideline, and never on no data", () => {
     assert.equal(Dyson.airQualityAlarm("3"), false)
-    assert.equal(Dyson.airQualityAlarm("35"), false, "at the guideline is not past it")
-    assert.equal(Dyson.airQualityAlarm("36"), true)
+    assert.equal(Dyson.airQualityAlarm("15"), false, "at the guideline is not past it")
+    assert.equal(Dyson.airQualityAlarm("16"), true)
+    // The old threshold was the US EPA 24-hour standard, which a home almost
+    // never reaches — so the colour never fired and told nobody anything.
+    assert.equal(Dyson.airQualityAlarm("30"), true, "well short of 35, still worth saying")
     assert.equal(Dyson.airQualityAlarm("120"), true)
     assert.equal(Dyson.airQualityAlarm(""), false, "no reading is not an alarm")
     assert.equal(Dyson.airQualityAlarm("unavailable"), false)

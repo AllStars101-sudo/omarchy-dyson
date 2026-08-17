@@ -285,15 +285,22 @@ function pm25Band(value) {
   if (value === "" || value === null || value === undefined) return "unknown"
   var v = Number(value)
   if (!isFinite(v)) return "unknown"
-  if (v <= 12) return "good"
-  if (v <= 35) return "fair"
-  if (v <= 55) return "poor"
+  // WHO 2021 Global Air Quality Guidelines, not the US EPA breakpoints these
+  // were first taken from. WHO puts the 24-hour PM2.5 guideline at 15 µg/m³ and
+  // the annual mean at 5; the EPA's 24-hour standard of 35 is WHO's Interim
+  // Target 1, a staging post for countries with heavy pollution rather than a
+  // level anyone should aim for indoors. A home that never trips 35 would never
+  // colour at all, which is a threshold doing no work.
+  if (v <= 5) return "good"      // WHO annual guideline
+  if (v <= 15) return "fair"     // WHO 24-hour guideline
+  if (v <= 35) return "poor"     // WHO Interim Target 1
   return "bad"
 }
 
 // The one condition this plugin colours for. Everything else inherits the
-// theme's foreground; air quality past the WHO 24-hour guideline is worth
-// breaking that rule for.
+// theme's foreground; PM2.5 past WHO's 24-hour guideline of 15 µg/m³ is worth
+// breaking that rule for. Cooking, a candle or a vacuum pass all clear that
+// indoors, which is exactly when a purifier readout earns its place.
 function airQualityAlarm(pm25) {
   var band = pm25Band(pm25)
   return band === "poor" || band === "bad"

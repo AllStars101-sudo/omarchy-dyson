@@ -95,9 +95,15 @@ omarchy-shell dyson-air devices
 | `staleSeconds` | `300` | Silence before the device counts as stale |
 | `autoReconnect` | `true` | Press the reconnect button when stale |
 
-An open panel polls every 2s regardless. PM2.5 past the WHO 24-hour guideline
-(35 µg/m³) is drawn in the theme's urgent colour; nothing else is coloured by
-state.
+An open panel polls every 2s regardless. PM2.5 past WHO's 2021 24-hour
+guideline of 15 µg/m³ is drawn in the theme's urgent colour; nothing else is
+coloured by state.
+
+That threshold is deliberately not the 35 µg/m³ the US EPA uses for 24 hours —
+WHO lists 35 as Interim Target 1, a staging post for heavily polluted regions.
+A home rarely reaches it, so a warning set there would never fire. 15 is
+reachable indoors from cooking, a candle or a vacuum pass, which is when the
+readout is worth looking at.
 
 ## Several devices
 
