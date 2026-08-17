@@ -605,3 +605,33 @@ describe("details", () => {
       false)
   })
 })
+
+describe("aim chips", () => {
+  const presets = [{ value: "left", label: "Left" }, { value: "wide", label: "Wide" }]
+
+  test("the presets get a Custom chip appended", () => {
+    assert.deepEqual(View.aimOptions(presets), [
+      { value: "left", label: "Left" },
+      { value: "wide", label: "Wide" },
+      { value: "custom", label: "···" }
+    ])
+    assert.deepEqual(View.aimOptions([]), [{ value: "custom", label: "···" }])
+    assert.deepEqual(View.aimOptions(null), [{ value: "custom", label: "···" }])
+  })
+
+  test("a range matching no preset selects Custom on its own", () => {
+    // Otherwise the panel would draw an arc that no lit chip accounted for,
+    // and the sliders that could explain it would stay folded away.
+    assert.equal(View.aimChoice("left", false), "left")
+    assert.equal(View.aimChoice("", false), "custom")
+    assert.equal(View.aimChoice("left", true), "custom", "the user's choice wins")
+    assert.equal(View.aimChoice("", true), "custom")
+  })
+})
+
+describe("on/off chips", () => {
+  test("a switch reads as two chips like every other control", () => {
+    assert.deepEqual(View.onOffOptions(),
+      [{ value: "on", label: "On" }, { value: "off", label: "Off" }])
+  })
+})

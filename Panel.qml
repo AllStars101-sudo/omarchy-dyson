@@ -84,6 +84,10 @@ Panel {
   readonly property int angleLow: Dyson.clampAngle(fanAttrs.angle_low, Dyson.ANGLE_MIN)
   readonly property int angleHigh: Dyson.clampAngle(fanAttrs.angle_high, Dyson.ANGLE_MAX)
   readonly property string anglePreset: Dyson.activeAnglePreset(fanAttrs.angle_low, fanAttrs.angle_high)
+  // Custom is both a user choice and what a range matching no preset already
+  // is, so the sliders unfold either way.
+  property bool customAim: false
+  readonly property string aimChoice: View.aimChoice(anglePreset, customAim)
 
   // Home Assistant's FanEntityFeature.DIRECTION is bit 4. The attribute is
   // present on devices that cannot act on it, so the feature bit is the test.
@@ -559,17 +563,19 @@ Panel {
             onChanged: function(v) { root.setHvacMode(v) }
           }
 
-          Toggle {
+          // Chips rather than a Toggle card: same control, a third of the
+          // height, and it lines up with the Off/Fan/Heat a heater shows here.
+          ButtonGroup {
             width: parent.width
-            label: "Power"
-            description: "Turn the device on or off"
-            checked: root.fanOn
             visible: root.view.powerToggle
             enabled: root.actionable
             opacity: root.actionable ? 1 : 0.4
             foreground: root.bar.foreground
+            background: root.bar.background
             fontFamily: root.bar.fontFamily
-            onClicked: root.togglePower()
+            options: [{ value: "off", label: "Off" }, { value: "on", label: "On" }]
+            value: root.fanOn ? "on" : "off"
+            onChanged: function(v) { if ((v === "on") !== root.fanOn) root.togglePower() }
           }
 
           // ---------- Target temperature ----------
@@ -644,125 +650,144 @@ Panel {
             onMoved: function(v) { root.setSpeed(v) }
           }
 
-          PanelSectionHeader {
+          // ---------- Modes ----------
+          //
+          // An icon toolbar rather than a column of labelled Toggle cards. Each
+          // card is 54px minimum, and a device that supports everything showed
+          // seven of them; the panel scrolled, and nothing about a bar dropdown
+          // says that it can. Every icon carries a tooltip naming what a label
+          // used to say.
+          Flow {
             width: parent.width
-            text: "Airflow"
-            visible: root.view.airflow
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
+            spacing: Style.space(6)
+
+            Button {
+              iconText: "\u{f0e73}"
+              tooltipText: root.oscillating ? "Oscillation on" : "Oscillation off"
+              selected: root.oscillating
+              enabled: root.actionable
+              opacity: root.actionable ? 1 : 0.4
+              bordered: true
+              foreground: root.bar.foreground
+              background: root.bar.background
+              fontFamily: root.bar.fontFamily
+              onClicked: root.toggleOscillation()
+            }
+
+            Button {
+              iconText: "\u{f0594}"
+              tooltipText: "Night mode — quiet running, display dimmed"
+              visible: root.view.nightMode
+              selected: root.nightMode
+              enabled: root.actionable
+              opacity: root.actionable ? 1 : 0.4
+              bordered: true
+              foreground: root.bar.foreground
+              background: root.bar.background
+              fontFamily: root.bar.fontFamily
+              onClicked: root.toggleNight()
+            }
+
+            Button {
+              iconText: "\u{f00e1}"
+              tooltipText: "Auto mode — follow air quality"
+              visible: root.view.autoMode
+              selected: root.autoMode
+              enabled: root.actionable
+              opacity: root.actionable ? 1 : 0.4
+              bordered: true
+              foreground: root.bar.foreground
+              background: root.bar.background
+              fontFamily: root.bar.fontFamily
+              onClicked: root.toggleAuto()
+            }
+
+            Button {
+              iconText: "\u{f04e1}"
+              tooltipText: root.fanDirection === "reverse"
+                ? "Airflow out the back" : "Airflow out the front"
+              visible: root.view.direction
+              selected: root.fanDirection === "reverse"
+              enabled: root.actionable
+              opacity: root.actionable ? 1 : 0.4
+              bordered: true
+              foreground: root.bar.foreground
+              background: root.bar.background
+              fontFamily: root.bar.fontFamily
+              onClicked: root.setDirection(root.fanDirection === "reverse" ? "forward" : "reverse")
+            }
           }
 
-          ButtonGroup {
+          // Focused and diffused read better spelled out than as a pair of
+          // icons: one is a narrow jet and the other a wide spill, and no glyph
+          // says that faster than the words do.
+          ChipsRow {
             width: parent.width
             visible: root.view.airflow
-            enabled: root.actionable
-            opacity: root.actionable ? 1 : 0.4
-            foreground: root.bar.foreground
-            background: root.bar.background
-            fontFamily: root.bar.fontFamily
+            bar: root.bar
+            actionable: root.actionable
+            label: "Airflow"
             options: View.airflowOptions(root.fanModes)
             value: root.fanMode
             onChanged: function(v) { root.setFanMode(v) }
           }
 
-          // ---------- Modes ----------
-          PanelSectionHeader {
-            width: parent.width
-            text: "Modes"
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-          }
-
-          Toggle {
-            width: parent.width
-            label: "Oscillation"
-            description: "Sweep left and right"
-            checked: root.oscillating
-            enabled: root.actionable
-            opacity: root.actionable ? 1 : 0.4
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-            onClicked: root.toggleOscillation()
-          }
-
-          PanelSectionHeader {
-            width: parent.width
-            text: "Width"
-            visible: root.view.oscillationAngle
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-          }
-
-          ButtonGroup {
+          // Label and control share a line from here down. A section header
+          // above each of these would double the rows they cost.
+          ChipsRow {
             width: parent.width
             visible: root.view.oscillationAngle
-            enabled: root.actionable
-            opacity: root.actionable ? 1 : 0.4
-            foreground: root.bar.foreground
-            background: root.bar.background
-            fontFamily: root.bar.fontFamily
+            bar: root.bar
+            actionable: root.actionable
+            label: "Width"
             options: View.selectOptions(root.angleOptions)
             value: root.angleMode
             onChanged: function(v) { root.setSelectOption(root.caps.oscillationMode, v) }
           }
 
-          PanelSectionHeader {
-            width: parent.width
-            text: "Tilt"
-            visible: root.view.tilt
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-          }
-
-          ButtonGroup {
+          ChipsRow {
             width: parent.width
             visible: root.view.tilt
-            enabled: root.actionable
-            opacity: root.actionable ? 1 : 0.4
-            foreground: root.bar.foreground
-            background: root.bar.background
-            fontFamily: root.bar.fontFamily
+            bar: root.bar
+            actionable: root.actionable
+            label: "Tilt"
             options: View.selectOptions(root.tiltOptions)
             value: root.tiltMode
             onChanged: function(v) { root.setSelectOption(root.caps.tiltMode, v) }
           }
 
-          PanelSectionHeader {
-            width: parent.width
-            text: "Aim"
-            visible: root.view.aiming
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-          }
-
-          ButtonGroup {
+          // The current arc goes in the label, so the readout costs no row of
+          // its own. The two sliders stay folded until Custom is picked.
+          ChipsRow {
             width: parent.width
             visible: root.view.aiming
-            enabled: root.actionable
-            opacity: root.actionable ? 1 : 0.4
-            foreground: root.bar.foreground
-            background: root.bar.background
-            fontFamily: root.bar.fontFamily
-            options: Dyson.anglePresets()
-            value: root.anglePreset
-            onChanged: function(v) { root.applyAnglePreset(v) }
+            bar: root.bar
+            actionable: root.actionable
+            label: "Aim"
+            options: View.aimOptions(Dyson.anglePresets())
+            value: root.aimChoice
+            onChanged: function(v) {
+              if (v === "custom") root.customAim = true
+              else { root.customAim = false; root.applyAnglePreset(v) }
+            }
           }
 
+          // The arc appears here rather than beside the chips: a lit preset
+          // already names itself, and only a custom range needs spelling out.
           Text {
             width: parent.width
-            visible: root.view.aiming
-            text: View.angleLabel(root.angleLow, root.angleHigh, Dyson.ANGLE_MIN, Dyson.ANGLE_MAX)
+            visible: root.view.aiming && root.aimChoice === "custom"
+            text: View.angleLabel(root.angleLow, root.angleHigh,
+                                  Dyson.ANGLE_MIN, Dyson.ANGLE_MAX)
             color: root.bar.foreground
             opacity: 0.7
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.caption
           }
 
-          // Posted on release, not on every drag step: each call reaches the
-          // fan over MQTT, and a drag emits dozens of intermediate values.
           PanelSlider {
             width: parent.width
-            visible: root.view.aiming
+            visible: root.view.aiming && root.aimChoice === "custom"
             bar: root.bar
             enabled: root.actionable
             minimum: Dyson.ANGLE_MIN; maximum: Dyson.ANGLE_MAX
@@ -773,7 +798,7 @@ Panel {
 
           PanelSlider {
             width: parent.width
-            visible: root.view.aiming
+            visible: root.view.aiming && root.aimChoice === "custom"
             bar: root.bar
             enabled: root.actionable
             minimum: Dyson.ANGLE_MIN; maximum: Dyson.ANGLE_MAX
@@ -782,130 +807,45 @@ Panel {
             onReleased: function(v) { root.moveAngle("high", v) }
           }
 
-          // Hidden rather than greyed when the device has no such control: a
-          // permanently dead row is worse than a shorter panel.
-          Toggle {
-            width: parent.width
-            label: "Night mode"
-            description: "Quiet running, display dimmed"
-            checked: root.nightMode
-            visible: root.view.nightMode
-            enabled: root.actionable
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-            onClicked: root.toggleNight()
-          }
-
-          Toggle {
-            width: parent.width
-            label: "Auto mode"
-            description: "Let the device follow air quality"
-            checked: root.autoMode
-            visible: root.view.autoMode
-            enabled: root.actionable
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-            onClicked: root.toggleAuto()
-          }
-
-          Toggle {
-            width: parent.width
-            label: "Continuous monitoring"
-            description: "Keep sensing air quality while the fan is off"
-            checked: root.monitoring
-            visible: root.view.monitoring
-            enabled: root.actionable
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-            onClicked: root.setSwitch(root.caps.monitorSwitch, !root.monitoring)
-          }
-
-          Row {
-            width: parent.width
-            visible: root.view.direction
-            spacing: Style.space(10)
-
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              text: "Airflow direction"
-              color: root.bar.foreground
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.caption
-            }
-
-            ButtonGroup {
-              enabled: root.actionable
-              opacity: root.actionable ? 1 : 0.4
-              foreground: root.bar.foreground
-              background: root.bar.background
-              fontFamily: root.bar.fontFamily
-              options: [{ value: "forward", label: "Front" }, { value: "reverse", label: "Back" }]
-              value: root.fanDirection
-              onChanged: function(v) { root.setDirection(v) }
-            }
-          }
-
-          PanelSectionHeader {
-            width: parent.width
-            text: "Heating mode"
-            visible: root.view.heatingMode
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-          }
-
-          ButtonGroup {
+          ChipsRow {
             width: parent.width
             visible: root.view.heatingMode
-            enabled: root.actionable
-            opacity: root.actionable ? 1 : 0.4
-            foreground: root.bar.foreground
-            background: root.bar.background
-            fontFamily: root.bar.fontFamily
+            bar: root.bar
+            actionable: root.actionable
+            label: "Heat"
             options: View.selectOptions(root.heatingModeOptions)
             value: root.heatingModeValue
             onChanged: function(v) { root.setSelectOption(root.caps.heatingMode, v) }
           }
 
-          PanelSectionHeader {
-            width: parent.width
-            text: "Water hardness"
-            visible: root.view.waterHardness
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-          }
-
-          ButtonGroup {
+          ChipsRow {
             width: parent.width
             visible: root.view.waterHardness
-            enabled: root.actionable
-            opacity: root.actionable ? 1 : 0.4
-            foreground: root.bar.foreground
-            background: root.bar.background
-            fontFamily: root.bar.fontFamily
+            bar: root.bar
+            actionable: root.actionable
+            label: "Water"
             options: View.selectOptions(root.waterHardnessOptions)
             value: root.waterHardnessValue
             onChanged: function(v) { root.setSelectOption(root.caps.waterHardness, v) }
           }
 
-          PanelSectionHeader {
-            width: parent.width
-            text: "Sleep timer · " + View.sleepTimerLabel(root.sleepTimerMinutes)
-            visible: root.view.sleepTimer
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-          }
-
-          PanelSlider {
+          LabelledRow {
             width: parent.width
             visible: root.view.sleepTimer
             bar: root.bar
-            enabled: root.actionable
-            minimum: 0
-            maximum: Number(root.sleepTimerAttrs.max || 540)
-            step: Number(root.sleepTimerAttrs.step || 15)
-            integer: true
-            value: root.sleepTimerMinutes
-            onReleased: function(v) { root.setNumber(root.caps.sleepTimer, v) }
+            label: "\u{f04b2}  " + View.sleepTimerLabel(root.sleepTimerMinutes)
+
+            PanelSlider {
+              width: Style.space(150)
+              bar: root.bar
+              enabled: root.actionable
+              minimum: 0
+              maximum: Number(root.sleepTimerAttrs.max || 540)
+              step: Number(root.sleepTimerAttrs.step || 15)
+              integer: true
+              value: root.sleepTimerMinutes
+              onReleased: function(v) { root.setNumber(root.caps.sleepTimer, v) }
+            }
           }
 
           // ---------- Air quality ----------
@@ -1039,7 +979,7 @@ Panel {
             font.pixelSize: Style.font.caption
           }
 
-          // ---------- Details ----------
+          // ---------- Extras ----------
           // Read-only diagnostics, folded away unless something in them wants
           // reading. Opening it is sticky for the session but never overrides
           // the auto-open, so a fault that appears while the panel is shut is
@@ -1053,7 +993,7 @@ Panel {
               id: detailsHeader
               anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
-              text: (root.detailsOpen ? "▾  Details" : "▸  Details")
+              text: (root.detailsOpen ? "▾  Extras" : "▸  Extras")
               color: root.bar.foreground
               opacity: 0.7
               font.family: root.bar.fontFamily
@@ -1078,12 +1018,13 @@ Panel {
             }
           }
 
-          Grid {
+          // One row per fact, full width. Two columns fitted more in but every
+          // value elided — "Not In…", "Cloud · -38 …" — and a diagnostic you
+          // cannot read is not a diagnostic.
+          Column {
             id: detailRows
             width: parent.width
-            columns: 2
-            columnSpacing: Style.space(10)
-            rowSpacing: Style.space(6)
+            spacing: Style.space(4)
             visible: root.view.details && root.detailsOpen
 
             readonly property var entries: View.details(root.viewModel)
@@ -1093,42 +1034,67 @@ Panel {
 
               Item {
                 required property var modelData
-                width: (detailRows.width - Style.space(10)) / 2
+                width: detailRows.width
                 implicitHeight: Math.max(detailLabel.implicitHeight, detailValue.implicitHeight)
 
                 Text {
                   id: detailLabel
-                  anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+                  anchors.left: parent.left
+                  anchors.verticalCenter: parent.verticalCenter
                   text: parent.modelData.label
-                  color: root.bar.foreground; opacity: 0.6
-                  font.family: root.bar.fontFamily; font.pixelSize: Style.font.caption
+                  color: root.bar.foreground
+                  opacity: 0.6
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.caption
                 }
 
                 Text {
                   id: detailValue
                   anchors.right: parent.right
+                  anchors.left: detailLabel.right
+                  anchors.leftMargin: Style.space(8)
                   anchors.verticalCenter: parent.verticalCenter
-                  width: parent.width - detailLabel.implicitWidth - Style.space(8)
                   horizontalAlignment: Text.AlignRight
                   elide: Text.ElideRight
                   text: parent.modelData.value
                   color: parent.modelData.alarm ? Color.urgent : root.bar.foreground
-                  font.family: root.bar.fontFamily; font.pixelSize: Style.font.caption
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.caption
                 }
               }
             }
           }
 
-          Toggle {
+          // Set-once settings live here rather than in the toolbar: they are
+          // not things anyone reaches for while adjusting a fan.
+          ChipsRow {
+            width: parent.width
+            visible: root.view.details && root.detailsOpen && root.view.monitoring
+            bar: root.bar
+            actionable: root.actionable
+            captionWidth: Style.space(150)
+            label: "Continuous monitoring"
+            options: View.onOffOptions()
+            value: root.monitoring ? "on" : "off"
+            onChanged: function(v) {
+              if ((v === "on") !== root.monitoring)
+                root.setSwitch(root.caps.monitorSwitch, v === "on")
+            }
+          }
+
+          ChipsRow {
             width: parent.width
             visible: root.view.details && root.detailsOpen && root.caps.firmwareAutoUpdate !== ""
+            bar: root.bar
+            actionable: root.actionable
+            captionWidth: Style.space(150)
             label: "Firmware auto-update"
-            description: "Let the device update itself"
-            checked: root.firmwareAuto
-            enabled: root.actionable
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-            onClicked: root.setSwitch(root.caps.firmwareAutoUpdate, !root.firmwareAuto)
+            options: View.onOffOptions()
+            value: root.firmwareAuto ? "on" : "off"
+            onChanged: function(v) {
+              if ((v === "on") !== root.firmwareAuto)
+                root.setSwitch(root.caps.firmwareAutoUpdate, v === "on")
+            }
           }
 
           Row {

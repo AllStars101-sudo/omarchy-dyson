@@ -95,11 +95,11 @@ function sections(m) {
     humidifier: !!m.humidifierEntity,
     // A humidity target on a humidifier that is off has no effect to observe.
     humiditySlider: !!m.humidifierEntity && !!m.humidifying,
+    // A single airflow mode is not a choice, so the row needs two.
+    airflow: airflowOptions(m.fanModes).length > 1,
     // An angle chosen while the head is still has nothing to observe, so the
     // width row follows the oscillation toggle. Tilt is a separate axis and
     // does not.
-    // A single airflow mode is not a choice, so the row needs two.
-    airflow: airflowOptions(m.fanModes).length > 1,
     oscillationAngle: selectOptions(m.angleOptions).length > 0 && !!m.oscillating,
     tilt: selectOptions(m.tiltOptions).length > 0,
     nightMode: !!m.nightSwitch,
@@ -263,6 +263,32 @@ function angleLabel(low, high, minAngle, maxAngle) {
   return l + "° – " + h + "°  (" + (h - l) + "° arc)"
 }
 
+// The aim presets plus a Custom chip that reveals the two angle sliders. Takes
+// the preset list rather than importing it: this file has to load under both
+// QML's JS engine and node, and cross-file imports do not survive both.
+function aimOptions(presets) {
+  var out = []
+  var list = presets || []
+  for (var i = 0; i < list.length; i++)
+    out.push({ value: list[i].value, label: list[i].label })
+  out.push({ value: "custom", label: "···" })
+  return out
+}
+
+// A range matching no preset IS custom, so it selects the Custom chip and the
+// sliders unfold on their own — otherwise the panel would show an arc no lit
+// chip accounted for.
+function aimChoice(activePreset, userWantsCustom) {
+  if (userWantsCustom) return "custom"
+  return activePreset || "custom"
+}
+
+// On/off as two chips. A switch reads the same as every other chip row this
+// way, rather than being the one control shaped like a card.
+function onOffOptions() {
+  return [{ value: "on", label: "On" }, { value: "off", label: "Off" }]
+}
+
 // A Home Assistant `select` renders as a chip row. The labels are the
 // integration's own ("45°", "Breeze", "Custom") and are passed through rather
 // than rewritten: a model this plugin has never seen will list options nobody
@@ -367,6 +393,7 @@ if (typeof module !== "undefined") module.exports = {
   isFiniteNumber: isFiniteNumber, sections: sections, readings: readings,
   readingText: readingText, readingColorKey: readingColorKey, hvacOptions: hvacOptions,
   selectOptions: selectOptions, airflowOptions: airflowOptions,
+  aimOptions: aimOptions, aimChoice: aimChoice, onOffOptions: onOffOptions,
   details: details, filterLine: filterLine, activeFaultCount: activeFaultCount,
   sleepTimerLabel: sleepTimerLabel, angleLabel: angleLabel,
   deviceOptions: deviceOptions, spinDurationMs: spinDurationMs,

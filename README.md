@@ -4,7 +4,7 @@ Control Dyson purifiers, fans, heaters and humidifiers from the Omarchy bar,
 through Home Assistant.
 
 <p align="center">
-  <img src="preview.png" alt="The Dyson Air panel showing mode, speed, oscillation, night mode, auto mode, a PM2.5 graph and air quality readings" width="420">
+  <img src="preview.png" alt="The Dyson Air panel showing mode, speed, a row of mode icons, airflow, sweep aiming, a sleep timer, a PM2.5 graph, air quality readings and a collapsed Extras section" width="420">
 </p>
 
 > Not affiliated with, sponsored by, or endorsed by Dyson, the Home Assistant
@@ -57,13 +57,19 @@ Removing the plugin does not remove your token from the keyring. The
 | Panel | Off / Fan / Heat, target temperature, humidity, speed |
 | Panel | Focused / diffused airflow, front / back direction |
 | Panel | Oscillation, sweep width, tilt, sweep aiming |
-| Panel | Night mode, auto mode, continuous monitoring, sleep timer |
+| Panel | Night mode, auto mode, sleep timer |
 | Panel | Heating mode, water hardness |
 | Panel | PM2.5 graph, air quality readings, filter life |
-| Panel | Details: faults, filters, connection, schedule, filter reset |
+| Panel | Extras: faults, filters, connection, schedule, continuous monitoring, firmware auto-update, filter reset |
 
 Every one of those is drawn only when the device has it. Nothing is greyed out;
 a control that cannot act is not there.
+
+The panel does not scroll. A bar dropdown gives no hint that it could, so the
+controls a device supports have to fit: the frequent ones are icons with
+tooltips, each labelled control shares its line with its label, and the
+read-only diagnostics fold into **Extras**, which opens itself when a fault is
+active or a filter is due.
 
 Omarchy's bar hotkey (Super+Ctrl+N for the Nth panel in a section) opens the
 panel, not the settings overlay.
