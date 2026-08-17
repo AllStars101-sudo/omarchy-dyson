@@ -1,6 +1,6 @@
 {
   "name": "omarchy-dyson-air",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Dyson air treatment control for the Omarchy bar, via Home Assistant",
   "license": "MIT",
   "private": true,

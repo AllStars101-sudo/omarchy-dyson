@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.allstars101-sudo.dyson-air",
   "name": "Dyson Air",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": "Chris Pagolu",
   "license": "MIT",
   "description": "Control Dyson purifiers, fans, heaters and humidifiers from the Omarchy bar, through Home Assistant.",
