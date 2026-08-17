@@ -18,9 +18,8 @@ Item {
   property string value: ""
   property bool actionable: true
   property real gap: Style.space(8)
-  // Tighter than the kit default. Five aim presets plus a caption overshoot the
-  // panel by a few pixels at the default padding, and wrapping one chip onto a
-  // line of its own looks like a mistake rather than a layout.
+  // Tighter than the kit default, so a caption plus four or five chips fits the
+  // panel width without wrapping one chip onto a line of its own.
   property real chipPadding: Style.space(8)
   property real captionWidth: Style.space(64)
 

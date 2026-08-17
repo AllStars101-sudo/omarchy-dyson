@@ -79,15 +79,6 @@ Panel {
   readonly property string angleMode: (stateOf(caps.oscillationMode) || {}).state || ""
   readonly property var tiltOptions: attrsOf(caps.tiltMode).options || []
   readonly property string tiltMode: (stateOf(caps.tiltMode) || {}).state || ""
-  // Sweep aiming. Absolute to the machine's zero; the fan entity reports these
-  // on every model even where no number entity exists to set them.
-  readonly property int angleLow: Dyson.clampAngle(fanAttrs.angle_low, Dyson.ANGLE_MIN)
-  readonly property int angleHigh: Dyson.clampAngle(fanAttrs.angle_high, Dyson.ANGLE_MAX)
-  readonly property string anglePreset: Dyson.activeAnglePreset(fanAttrs.angle_low, fanAttrs.angle_high)
-  // Custom is both a user choice and what a range matching no preset already
-  // is, so the sliders unfold either way.
-  property bool customAim: false
-  readonly property string aimChoice: View.aimChoice(anglePreset, customAim)
 
   // Home Assistant's FanEntityFeature.DIRECTION is bit 4. The attribute is
   // present on devices that cannot act on it, so the feature bit is the test.
@@ -313,21 +304,6 @@ Panel {
   function setDirection(direction) {
     if (!actionable || !directionSupported) return
     service.callService("fan", "set_direction", { entity_id: fanEntity, direction: direction })
-  }
-  function setAngles(low, high) {
-    if (!actionable) return
-    if (low === angleLow && high === angleHigh) return
-    service.setOscillationAngles(fanEntity, low, high)
-  }
-  function applyAnglePreset(name) {
-    var presets = Dyson.anglePresets()
-    for (var i = 0; i < presets.length; i++)
-      if (presets[i].value === name) { setAngles(presets[i].low, presets[i].high); return }
-  }
-  function moveAngle(which, value) {
-    var next = Dyson.angleRange(which === "low" ? value : angleLow,
-                                which === "high" ? value : angleHigh, which)
-    setAngles(next.low, next.high)
   }
   function resetFilter(kind) {
     if (!actionable) return
@@ -792,55 +768,6 @@ Panel {
 
           // The current arc goes in the label, so the readout costs no row of
           // its own. The two sliders stay folded until Custom is picked.
-          ChipsRow {
-            width: parent.width
-            visible: root.view.aiming
-            bar: root.bar
-            actionable: root.actionable
-            label: "Aim"
-            options: View.aimOptions(Dyson.anglePresets())
-            value: root.aimChoice
-            onChanged: function(v) {
-              if (v === "custom") root.customAim = true
-              else { root.customAim = false; root.applyAnglePreset(v) }
-            }
-          }
-
-          // The arc appears here rather than beside the chips: a lit preset
-          // already names itself, and only a custom range needs spelling out.
-          Text {
-            width: parent.width
-            visible: root.view.aiming && root.aimChoice === "custom"
-            text: View.angleLabel(root.angleLow, root.angleHigh,
-                                  Dyson.ANGLE_MIN, Dyson.ANGLE_MAX)
-            color: root.bar.foreground
-            opacity: 0.7
-            font.family: root.bar.fontFamily
-            font.pixelSize: Style.font.caption
-          }
-
-          PanelSlider {
-            width: parent.width
-            visible: root.view.aiming && root.aimChoice === "custom"
-            bar: root.bar
-            enabled: root.actionable
-            minimum: Dyson.ANGLE_MIN; maximum: Dyson.ANGLE_MAX
-            step: Dyson.ANGLE_STEP; integer: true
-            value: root.angleLow
-            onReleased: function(v) { root.moveAngle("low", v) }
-          }
-
-          PanelSlider {
-            width: parent.width
-            visible: root.view.aiming && root.aimChoice === "custom"
-            bar: root.bar
-            enabled: root.actionable
-            minimum: Dyson.ANGLE_MIN; maximum: Dyson.ANGLE_MAX
-            step: Dyson.ANGLE_STEP; integer: true
-            value: root.angleHigh
-            onReleased: function(v) { root.moveAngle("high", v) }
-          }
-
           ChipsRow {
             width: parent.width
             visible: root.view.heatingMode

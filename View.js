@@ -112,10 +112,6 @@ function sections(m) {
     airQuality: readings(m).length > 0,
     graph: (m.historyPoints || 0) > 1,
     filterWarning: !!m.filterDue,
-    // Aiming needs somewhere to aim: with the head still there is nothing to
-    // narrow. The service works on every model, so unlike the other controls
-    // this one is not gated on an entity existing.
-    aiming: !!m.oscillating && !!m.fanEntity,
     details: details(m).length > 0,
     // Diagnostics stay folded away until something in them is worth reading.
     detailsOpenByDefault: activeFaultCount(m) > 0 || !!m.filterDue
@@ -256,37 +252,6 @@ function sleepTimerLabel(minutes, pending) {
   return pending ? text + " · setting…" : text
 }
 
-// What the current sweep range means in words. Absolute to the machine's own
-// zero, so this describes the arc rather than naming a direction in the room.
-function angleLabel(low, high, minAngle, maxAngle) {
-  if (!isFiniteNumber(low) || !isFiniteNumber(high)) return ""
-  var l = Number(low)
-  var h = Number(high)
-  if (l === h) return "Held at " + l + "°"
-  if (l <= minAngle && h >= maxAngle) return "Full sweep"
-  return l + "° – " + h + "°  (" + (h - l) + "° arc)"
-}
-
-// The aim presets plus a Custom chip that reveals the two angle sliders. Takes
-// the preset list rather than importing it: this file has to load under both
-// QML's JS engine and node, and cross-file imports do not survive both.
-function aimOptions(presets) {
-  var out = []
-  var list = presets || []
-  for (var i = 0; i < list.length; i++)
-    out.push({ value: list[i].value, label: list[i].label })
-  out.push({ value: "custom", label: "···" })
-  return out
-}
-
-// A range matching no preset IS custom, so it selects the Custom chip and the
-// sliders unfold on their own — otherwise the panel would show an arc no lit
-// chip accounted for.
-function aimChoice(activePreset, userWantsCustom) {
-  if (userWantsCustom) return "custom"
-  return activePreset || "custom"
-}
-
 // On/off as two chips. A switch reads the same as every other chip row this
 // way, rather than being the one control shaped like a card.
 function onOffOptions() {
@@ -397,9 +362,9 @@ if (typeof module !== "undefined") module.exports = {
   isFiniteNumber: isFiniteNumber, sections: sections, readings: readings,
   readingText: readingText, readingColorKey: readingColorKey, hvacOptions: hvacOptions,
   selectOptions: selectOptions, airflowOptions: airflowOptions,
-  aimOptions: aimOptions, aimChoice: aimChoice, onOffOptions: onOffOptions,
+  onOffOptions: onOffOptions,
   details: details, filterLine: filterLine, activeFaultCount: activeFaultCount,
-  sleepTimerLabel: sleepTimerLabel, angleLabel: angleLabel,
+  sleepTimerLabel: sleepTimerLabel,
   deviceOptions: deviceOptions, spinDurationMs: spinDurationMs,
   placements: placements, connectionStatus: connectionStatus, settingsTab: settingsTab
 }

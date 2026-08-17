@@ -293,7 +293,7 @@ describe("which rows exist", () => {
     assert.deepEqual({ ...s }, {
       deviceSwitcher: false, climate: false, powerToggle: true, targetTemp: false,
       humidifier: false, humiditySlider: false, airflow: false,
-      oscillationAngle: false, tilt: false, aiming: false,
+      oscillationAngle: false, tilt: false,
       nightMode: false, autoMode: false, sleepTimer: false, monitoring: false,
       heatingMode: false, waterHardness: false, direction: false,
       airQuality: false, graph: false, filterWarning: false,
@@ -501,13 +501,6 @@ describe("controls beyond the basics", () => {
       View.sections(model({ waterHardnessOptions: ["Soft", "Medium", "Hard"] })).waterHardness, true)
   })
 
-  test("aiming needs the head moving, not an entity", () => {
-    // The service works on every model, including ones with no angle entities,
-    // so this control is deliberately not gated on discovery finding one.
-    assert.equal(View.sections(model({ oscillating: true })).aiming, true)
-    assert.equal(View.sections(model({ oscillating: false })).aiming, false)
-    assert.equal(View.sections(model({ oscillating: true, fanEntity: "" })).aiming, false)
-  })
 
   test("sleep timer minutes read as a duration", () => {
     assert.equal(View.sleepTimerLabel(0), "Off", "0m would read as about to fire")
@@ -522,15 +515,6 @@ describe("controls beyond the basics", () => {
     assert.equal(View.sleepTimerLabel("x"), "")
   })
 
-  test("the sweep range is described as an arc, not a compass bearing", () => {
-    // Angles are absolute to the machine's own zero, so naming a direction in
-    // the room would be a guess about which way the unit is facing.
-    assert.equal(View.angleLabel(0, 350, 0, 350), "Full sweep")
-    assert.equal(View.angleLabel(0, 115, 0, 350), "0° – 115°  (115° arc)")
-    assert.equal(View.angleLabel(180, 180, 0, 350), "Held at 180°", "point aim")
-    assert.equal(View.angleLabel("", 350, 0, 350), "")
-    assert.equal(View.angleLabel(0, null, 0, 350), "")
-  })
 })
 
 describe("details", () => {
@@ -606,28 +590,6 @@ describe("details", () => {
   })
 })
 
-describe("aim chips", () => {
-  const presets = [{ value: "left", label: "Left" }, { value: "wide", label: "Wide" }]
-
-  test("the presets get a Custom chip appended", () => {
-    assert.deepEqual(View.aimOptions(presets), [
-      { value: "left", label: "Left" },
-      { value: "wide", label: "Wide" },
-      { value: "custom", label: "···" }
-    ])
-    assert.deepEqual(View.aimOptions([]), [{ value: "custom", label: "···" }])
-    assert.deepEqual(View.aimOptions(null), [{ value: "custom", label: "···" }])
-  })
-
-  test("a range matching no preset selects Custom on its own", () => {
-    // Otherwise the panel would draw an arc that no lit chip accounted for,
-    // and the sliders that could explain it would stay folded away.
-    assert.equal(View.aimChoice("left", false), "left")
-    assert.equal(View.aimChoice("", false), "custom")
-    assert.equal(View.aimChoice("left", true), "custom", "the user's choice wins")
-    assert.equal(View.aimChoice("", true), "custom")
-  })
-})
 
 describe("on/off chips", () => {
   test("a switch reads as two chips like every other control", () => {

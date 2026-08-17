@@ -106,7 +106,7 @@ Item {
       function(text) { onName(Dyson.modelName(text)) }, true)
   }
 
-  // Two of hass-dyson's services are keyed by device_id rather than entity_id,
+  // hass-dyson's filter reset is keyed by device_id rather than entity_id,
   // and the device registry is websocket-only — so the id is resolved through
   // the template API, the same route the model name already takes. Cached per
   // fan: it cannot change without the entity itself changing.
@@ -130,13 +130,6 @@ Item {
         root.deviceIds = next
         onId(id)
       }, true)
-  }
-
-  function setOscillationAngles(fanEntity, low, high) {
-    withDeviceId(fanEntity, function(deviceId) {
-      root.callService("hass_dyson", "set_oscillation_angles",
-        { device_id: deviceId, lower_angle: low, upper_angle: high })
-    })
   }
 
   function resetFilter(fanEntity, filterType) {

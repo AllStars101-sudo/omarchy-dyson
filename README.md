@@ -4,7 +4,7 @@ Control Dyson purifiers, fans, heaters and humidifiers from the Omarchy bar,
 through Home Assistant.
 
 <p align="center">
-  <img src="preview.png" alt="The Dyson Air panel showing mode, speed, a row of mode icons, airflow, sweep aiming, a sleep timer, a PM2.5 graph, air quality readings and a collapsed Extras section" width="420">
+  <img src="preview.png" alt="The Dyson Air panel showing mode, speed, a row of mode icons, airflow, a sleep timer, a PM2.5 graph, air quality readings and a collapsed Extras section" width="420">
 </p>
 
 > Not affiliated with, sponsored by, or endorsed by Dyson, the Home Assistant
@@ -56,7 +56,7 @@ Removing the plugin does not remove your token from the keyring. The
 | Bar, scroll | Speed up / down |
 | Panel | Off / Fan / Heat, target temperature, humidity, speed |
 | Panel | Focused / diffused airflow, front / back direction |
-| Panel | Oscillation, sweep width, tilt, sweep aiming |
+| Panel | Oscillation, sweep width, tilt |
 | Panel | Night mode, auto mode, sleep timer |
 | Panel | Heating mode, water hardness |
 | Panel | PM2.5 graph, air quality readings, filter life |
@@ -126,38 +126,6 @@ Option lists are read off the entity too. The sweep-width chips show 45/90/180/
 350 or 15/40/70 depending on the model's capability, and Breeze only where the
 device offers it — none of that is written down in this plugin.
 
-## Aiming
-
-Oscillation is on or off in the MyDyson app. Home Assistant can do better: the
-fan reports `angle_low` and `angle_high`, and hass-dyson's
-`set_oscillation_angles` service sets them, so the panel offers Left, Centre,
-Right and Wide plus two sliders for an arbitrary arc. Setting both ends to the
-same angle holds the head still, facing that way.
-
-The angles are absolute to the machine's own zero, not to the room, so "Left"
-means the low end of its travel — which way that points depends on how the unit
-is turned. Find it once and it stays put.
-
-This goes through the service rather than the `number.*_oscillation_*_angle`
-entities on purpose. Those exist only on models advertising an
-`AdvanceOscillation` capability; the service has no such gate, so aiming works
-on every model rather than the subset that happens to expose the entities.
-
-## Sleep timer
-
-The slider holds where you put it and shows `setting…` until Home Assistant
-reports the device agreeing, then goes back to reporting the device. After 45
-seconds it gives up waiting and shows whatever the device says.
-
-That is not decoration. `hass-dyson` writes the sleep timer entity back only
-for a value of zero; any other value waits on the device echoing `sltm`
-through MQTT. On the HP02 here, over a cloud connection, that echo never
-arrives — neither `number.set_value` nor the integration's own
-`hass_dyson.set_sleep_timer` moves the entity off `0`, and the fan's own
-`sleep_timer` attribute does not move either. So on this device the control
-sends the command and then honestly reverts. Other models may well be fine;
-this is upstream of the plugin either way.
-
 ## Staleness
 
 Home Assistant keeps serving the last state it saw after a device's MQTT session
@@ -176,7 +144,7 @@ minutes.
 
 | Model | Type | What was exercised |
 |---|---|---|
-| Pure Hot+Cool Link (HP02) | 455 | Heat, speed, focused/diffused airflow, oscillation, sweep aiming, night mode, continuous monitoring, sleep timer, air quality, graph, faults, staleness, settings |
+| Pure Hot+Cool Link (HP02) | 455 | Heat, speed, focused/diffused airflow, oscillation, night mode, continuous monitoring, air quality, graph, faults, staleness, settings |
 
 ### Untested, should work
 
