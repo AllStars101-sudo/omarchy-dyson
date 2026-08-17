@@ -55,7 +55,7 @@ Removing the plugin does not remove your token from the keyring. The
 | Bar, middle click | Toggle power |
 | Bar, scroll | Speed up / down |
 | Panel | Off / Fan / Heat, target temperature, humidity, speed |
-| Panel | Oscillation, night mode, auto mode |
+| Panel | Oscillation, sweep width, tilt, night mode, auto mode |
 | Panel | PM2.5 graph, air quality readings, filter life |
 
 Omarchy's bar hotkey (Super+Ctrl+N for the Nth panel in a section) opens the
@@ -137,7 +137,7 @@ entity definitions. No physical unit has been connected.
 | Purifier Cool Formaldehyde (TP09) | 438E | Cool-only, auto as a *switch*, formaldehyde, PM10/NO₂, oscillation angle, both filters |
 | Purifier Hot+Cool (HP07) | 527K | Heat via a climate entity, heating-mode select |
 | Pure Humidify+Cool (PH01) | 358 | Humidifier entity, humidity target, water hardness, no heat |
-| Purifier Big+Quiet (BP) | 664 | A non-ten-speed dial (12.5% steps, so 8 speeds) |
+| Purifier Big+Quiet (BP) | 664 | A non-ten-speed dial (12.5% steps, so 8 speeds), and a vertical tilt axis alongside the sweep |
 | A minimal Link-era device | n/a | Near-empty: every optional control stays hidden rather than rendering dead |
 
 ### Recognised but not modelled

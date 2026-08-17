@@ -208,6 +208,36 @@ describe("which rows exist", () => {
     assert.equal(View.sections(model({ autoSupported: false })).autoMode, false)
   })
 
+  test("width follows the oscillation toggle, tilt does not", () => {
+    const width = ["45°", "350°"]
+    const tilt = ["0°", "50°"]
+    assert.equal(View.sections(model()).oscillationAngle, false, "no select, no row")
+    assert.equal(View.sections(model({ angleOptions: width })).oscillationAngle, false,
+      "a sweep width with the head held still has nothing to show")
+    assert.equal(
+      View.sections(model({ angleOptions: width, oscillating: true })).oscillationAngle, true)
+    assert.equal(View.sections(model({ angleOptions: [] , oscillating: true })).oscillationAngle,
+      false, "an empty option list is no control")
+
+    assert.equal(View.sections(model()).tilt, false)
+    assert.equal(View.sections(model({ tiltOptions: tilt })).tilt, true,
+      "tilt is a separate axis and stands on its own")
+  })
+
+  test("select options pass the device's own labels through", () => {
+    assert.deepEqual(View.selectOptions(["45°", "Breeze"]), [
+      { value: "45°", label: "45°" }, { value: "Breeze", label: "Breeze" }
+    ])
+    // A model nobody here has seen will name options nobody anticipated, so
+    // anything usable survives and only unusable entries are dropped.
+    assert.deepEqual(View.selectOptions(["Whoosh"]), [{ value: "Whoosh", label: "Whoosh" }])
+    assert.deepEqual(View.selectOptions([null, "", 45, undefined, "90°"]),
+      [{ value: "90°", label: "90°" }])
+    assert.deepEqual(View.selectOptions([]), [])
+    assert.deepEqual(View.selectOptions(null), [])
+    assert.deepEqual(View.selectOptions(undefined), [])
+  })
+
   test("the device switcher appears only with a real choice and no pin", () => {
     const two = [{ entityId: "fan.a" }, { entityId: "fan.b" }]
     assert.equal(View.sections(model()).deviceSwitcher, false, "one device is no choice")
@@ -240,7 +270,8 @@ describe("which rows exist", () => {
     }))
     assert.deepEqual({ ...s }, {
       deviceSwitcher: false, climate: false, powerToggle: true, targetTemp: false,
-      humidifier: false, humiditySlider: false, nightMode: false, autoMode: false,
+      humidifier: false, humiditySlider: false, oscillationAngle: false, tilt: false,
+      nightMode: false, autoMode: false,
       airQuality: false, graph: false, filterWarning: false
     }, "only the power toggle and speed survive")
   })

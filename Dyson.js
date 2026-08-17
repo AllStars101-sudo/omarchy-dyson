@@ -146,7 +146,13 @@ function discover(states, fanEntity) {
     sleepTimer: companionEntity(states, fanEntity, "number", ["sleep_timer"]),
     oscillationAngle: companionEntity(states, fanEntity, "number",
       ["oscillation_angle_span", "oscillation_angle"]),
+    // The wide/narrow control. Its options differ by capability — 45/90/180/350
+    // on AdvanceOscillationDay1, 15/40/70 on Day0 — so the option list is read
+    // off the entity rather than assumed here. Day0 names it `_oscillation`.
     oscillationMode: companionEntity(states, fanEntity, "select", ["oscillation_mode", "oscillation"]),
+    // Vertical tilt, a separate axis on the Big+Quiet. Its own suffix, so the
+    // exact-suffix rule keeps it from colliding with oscillation_mode.
+    tiltMode: companionEntity(states, fanEntity, "select", ["tilt_oscillation_mode"]),
     heatingMode: companionEntity(states, fanEntity, "select", ["heating_mode"]),
 
     pm25: sensorByClass(states, fanEntity, "pm25"),

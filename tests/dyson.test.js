@@ -230,6 +230,20 @@ describe("capability discovery", () => {
     assert.equal(c.filterReplacement, "binary_sensor.dyson_tp09_filter_replacement")
   })
 
+  test("the two oscillation axes do not collide", () => {
+    // `_tilt_oscillation_mode` ends with the string the width matcher wants, so
+    // a substring or endsWith matcher hands the width control the tilt entity
+    // and the panel's Width chips silently drive the fan's vertical aim.
+    const c = Dyson.discover(fx.bigQuiet, "fan.dyson_bp")
+    assert.equal(c.oscillationMode, "select.dyson_bp_oscillation")
+    assert.equal(c.tiltMode, "select.dyson_bp_tilt_oscillation_mode")
+  })
+
+  test("a model with only a width axis reports no tilt", () => {
+    assert.equal(Dyson.discover(fx.tp09, "fan.dyson_tp09").tiltMode, "")
+    assert.equal(Dyson.discover(fx.nearMiss, "fan.dyson_nm").tiltMode, "")
+  })
+
   test("a humidifier model exposes humidity and no heat", () => {
     const c = Dyson.discover(fx.ph01, "fan.dyson_ph01")
     assert.equal(c.humidifier, "humidifier.dyson_ph01")
@@ -246,7 +260,7 @@ describe("capability discovery", () => {
     const c = Dyson.discover(fx.sparse, "fan.dyson_sparse")
     for (const key of ["climate", "humidifier", "autoSwitch", "nightSwitch", "heatSwitch",
                        "monitorSwitch", "sleepTimer", "oscillationAngle", "oscillationMode",
-                       "heatingMode", "pm25", "pm10", "no2", "voc", "co2", "temperature",
+                       "tiltMode", "heatingMode", "pm25", "pm10", "no2", "voc", "co2", "temperature",
                        "humidity", "aqi", "hcho", "hepaFilter", "carbonFilter",
                        "filterReplacement", "reconnect"]) {
       assert.equal(c[key], "", `expected no ${key}`)

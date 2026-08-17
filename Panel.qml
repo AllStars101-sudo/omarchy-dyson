@@ -72,6 +72,13 @@ Panel {
   readonly property int maxSpeed: Dyson.stepsFor(fanAttrs)
   readonly property int speed: Dyson.speedFromPercentage(fanAttrs.percentage, fanAttrs)
   readonly property bool oscillating: !!fanAttrs.oscillating
+
+  // Sweep width and vertical tilt, each a Home Assistant select whose option
+  // list comes from the device rather than from a table here.
+  readonly property var angleOptions: attrsOf(caps.oscillationMode).options || []
+  readonly property string angleMode: (stateOf(caps.oscillationMode) || {}).state || ""
+  readonly property var tiltOptions: attrsOf(caps.tiltMode).options || []
+  readonly property string tiltMode: (stateOf(caps.tiltMode) || {}).state || ""
   readonly property string rawName: fanAttrs.friendly_name || "Dyson"
   readonly property string serial: Dyson.serialFromName(rawName)
 
@@ -212,6 +219,10 @@ Panel {
     if (!actionable) return
     service.callService("fan", "oscillate", { entity_id: fanEntity, oscillating: !oscillating })
   }
+  function setSelectOption(entityId, option) {
+    if (!actionable || !entityId || !option) return
+    service.callService("select", "select_option", { entity_id: entityId, option: option })
+  }
   function toggleNight() {
     if (!actionable || !caps.nightSwitch) return
     service.callService("switch", nightMode ? "turn_off" : "turn_on", { entity_id: caps.nightSwitch })
@@ -279,6 +290,7 @@ Panel {
     climateEntity: caps.climate || "", hvacModes: hvacModes,
     humidifierEntity: caps.humidifier || "", humidifying: humidifying,
     nightSwitch: caps.nightSwitch || "", autoSupported: autoSupported,
+    oscillating: oscillating, angleOptions: angleOptions, tiltOptions: tiltOptions,
     filterDue: filterDue, historyPoints: historyPoints.length,
     pm25: pm25, pm10: pm10, voc: voc, no2: no2, co2: co2, hcho: hcho,
     aqi: aqi, humidity: humidity, hepaFilter: hepaFilter
@@ -562,6 +574,48 @@ Panel {
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
             onClicked: root.toggleOscillation()
+          }
+
+          PanelSectionHeader {
+            width: parent.width
+            text: "Width"
+            visible: root.view.oscillationAngle
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          ButtonGroup {
+            width: parent.width
+            visible: root.view.oscillationAngle
+            enabled: root.actionable
+            opacity: root.actionable ? 1 : 0.4
+            foreground: root.bar.foreground
+            background: root.bar.background
+            fontFamily: root.bar.fontFamily
+            options: View.selectOptions(root.angleOptions)
+            value: root.angleMode
+            onChanged: function(v) { root.setSelectOption(root.caps.oscillationMode, v) }
+          }
+
+          PanelSectionHeader {
+            width: parent.width
+            text: "Tilt"
+            visible: root.view.tilt
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          ButtonGroup {
+            width: parent.width
+            visible: root.view.tilt
+            enabled: root.actionable
+            opacity: root.actionable ? 1 : 0.4
+            foreground: root.bar.foreground
+            background: root.bar.background
+            fontFamily: root.bar.fontFamily
+            options: View.selectOptions(root.tiltOptions)
+            value: root.tiltMode
+            onChanged: function(v) { root.setSelectOption(root.caps.tiltMode, v) }
           }
 
           // Hidden rather than greyed when the device has no such control: a

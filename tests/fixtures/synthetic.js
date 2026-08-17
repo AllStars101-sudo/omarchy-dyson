@@ -39,7 +39,11 @@ var tp09 = [
   entity("button.dyson_tp09_reconnect", "unknown"),
   entity("number.dyson_tp09_sleep_timer", "0"),
   entity("number.dyson_tp09_oscillation_angle_span", "350"),
-  entity("select.dyson_tp09_oscillation_mode", "350"),
+  // The sweep-width control. hass-dyson labels the options with a degree sign
+  // and adds "Custom"; "Breeze" only appears on models that also humidify.
+  entity("select.dyson_tp09_oscillation_mode", "350°", {
+    options: ["45°", "90°", "180°", "350°", "Custom"]
+  }),
   // Newer models name it pm25 rather than "particulates".
   entity("sensor.dyson_tp09_pm25", "6", { device_class: "pm25" }),
   entity("sensor.dyson_tp09_pm10", "9", { device_class: "pm10" }),
@@ -168,11 +172,17 @@ var unavailable = [
   entity("sensor.dyson_u_temperature", "21.0", { device_class: "temperature" })
 ]
 
-// Big+Quiet does not use Dyson's usual ten-speed dial.
+// Big+Quiet does not use Dyson's usual ten-speed dial, and it is the one range
+// with a second oscillation axis. Its width select is named `_oscillation`
+// rather than `_oscillation_mode`, and `_tilt_oscillation_mode` sits alongside
+// it — a substring matcher would confuse the two.
 var bigQuiet = [
   entity("fan.dyson_bp", "on", { friendly_name: "Dyson BP1-EU-4444444", night_mode: false,
-                                 preset_modes: ["auto", "manual"], percentage: 60,
-                                 percentage_step: 12.5 }),
+                                 preset_modes: ["auto", "manual"], oscillating: true,
+                                 percentage: 60, percentage_step: 12.5 }),
+  entity("select.dyson_bp_oscillation", "40°", { options: ["Off", "15°", "40°", "70°"] }),
+  entity("select.dyson_bp_tilt_oscillation_mode", "25°",
+         { options: ["0°", "25°", "50°", "Breeze"] }),
   entity("sensor.dyson_bp_pm25", "8", { device_class: "pm25" })
 ]
 

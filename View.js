@@ -95,6 +95,11 @@ function sections(m) {
     humidifier: !!m.humidifierEntity,
     // A humidity target on a humidifier that is off has no effect to observe.
     humiditySlider: !!m.humidifierEntity && !!m.humidifying,
+    // An angle chosen while the head is still has nothing to observe, so the
+    // width row follows the oscillation toggle. Tilt is a separate axis and
+    // does not.
+    oscillationAngle: selectOptions(m.angleOptions).length > 0 && !!m.oscillating,
+    tilt: selectOptions(m.tiltOptions).length > 0,
     nightMode: !!m.nightSwitch,
     autoMode: !!m.autoSupported,
     airQuality: readings(m).length > 0,
@@ -147,6 +152,21 @@ function hvacOptions(hvacModes) {
     var mode = String(modes[i])
     var label = mode === "fan_only" ? "Fan" : (mode === "heat" ? "Heat" : "Off")
     out.push({ value: mode, label: label })
+  }
+  return out
+}
+
+// A Home Assistant `select` renders as a chip row. The labels are the
+// integration's own ("45°", "Breeze", "Custom") and are passed through rather
+// than rewritten: a model this plugin has never seen will list options nobody
+// here anticipated, and a hardcoded label map would drop them.
+function selectOptions(options) {
+  var out = []
+  var list = options || []
+  for (var i = 0; i < list.length; i++) {
+    var value = list[i]
+    if (typeof value !== "string" || value === "") continue
+    out.push({ value: value, label: value })
   }
   return out
 }
@@ -231,6 +251,7 @@ if (typeof module !== "undefined") module.exports = {
   statusLine: statusLine, heroSubtitle: heroSubtitle, staleMinutes: staleMinutes,
   isFiniteNumber: isFiniteNumber, sections: sections, readings: readings,
   readingText: readingText, readingColorKey: readingColorKey, hvacOptions: hvacOptions,
+  selectOptions: selectOptions,
   deviceOptions: deviceOptions, spinDurationMs: spinDurationMs,
   placements: placements, connectionStatus: connectionStatus, settingsTab: settingsTab
 }
