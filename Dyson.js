@@ -124,6 +124,39 @@ function sensorByName(states, fanEntity, suffixes) {
   return companionEntity(states, fanEntity, "sensor", suffixes)
 }
 
+// The device's fault sensors, which are a family rather than a fixed list: this
+// integration names them `fault_<subsystem>` and which subsystems exist varies
+// by model, so they are matched on the prefix and the rest becomes the label.
+// Sorted so the panel does not reorder itself between polls.
+function faults(states, fanEntity) {
+  var slug = slugOf(fanEntity)
+  var candidates = deviceEntities(states, fanEntity, "binary_sensor")
+  var out = []
+  for (var i = 0; i < candidates.length; i++) {
+    var rest = slugOf(candidates[i].entity_id).slice(slug.length).replace(/^_+/, "")
+    if (rest.indexOf("fault_") !== 0) continue
+    var name = rest.slice("fault_".length).replace(/_/g, " ")
+    out.push({
+      entityId: candidates[i].entity_id,
+      label: name.charAt(0).toUpperCase() + name.slice(1),
+      // Anything that is not a clear "off" is treated as unresolved rather than
+      // healthy: `unavailable` during a reconnect must not read as all-clear.
+      active: String(candidates[i].state) !== "off"
+    })
+  }
+  // Two-way compare: labels come from entity ids, which are unique, so there is
+  // no equal case to handle and a third branch would be untestable dead code.
+  out.sort(function(a, b) { return a.label < b.label ? -1 : 1 })
+  return out
+}
+
+function activeFaults(faultList) {
+  var out = []
+  var list = faultList || []
+  for (var i = 0; i < list.length; i++) if (list[i].active) out.push(list[i])
+  return out
+}
+
 // --- capability discovery -------------------------------------------------
 
 // Everything the panel might render, resolved once per poll. Absent entities
@@ -154,6 +187,8 @@ function discover(states, fanEntity) {
     // exact-suffix rule keeps it from colliding with oscillation_mode.
     tiltMode: companionEntity(states, fanEntity, "select", ["tilt_oscillation_mode"]),
     heatingMode: companionEntity(states, fanEntity, "select", ["heating_mode"]),
+    waterHardness: companionEntity(states, fanEntity, "select", ["water_hardness"]),
+    firmwareAutoUpdate: companionEntity(states, fanEntity, "switch", ["firmware_auto_update"]),
 
     pm25: sensorByClass(states, fanEntity, "pm25"),
     pm10: sensorByClass(states, fanEntity, "pm10"),
@@ -167,7 +202,20 @@ function discover(states, fanEntity) {
 
     hepaFilter: companionEntity(states, fanEntity, "sensor", ["hepa_filter_life", "filter_life"]),
     carbonFilter: companionEntity(states, fanEntity, "sensor", ["carbon_filter_life"]),
-    filterReplacement: companionEntity(states, fanEntity, "binary_sensor", ["filter_replacement"])
+    hepaFilterType: companionEntity(states, fanEntity, "sensor", ["hepa_filter_type", "filter_type"]),
+    carbonFilterType: companionEntity(states, fanEntity, "sensor", ["carbon_filter_type"]),
+    filterReplacement: companionEntity(states, fanEntity, "binary_sensor", ["filter_replacement"]),
+
+    // Diagnostics. None of these drive a control; they answer "is this thing
+    // healthy" without a trip to Home Assistant.
+    aqiCategory: companionEntity(states, fanEntity, "sensor", ["air_quality_category"]),
+    dominantPollutant: companionEntity(states, fanEntity, "sensor", ["dominant_pollutant"]),
+    // Deliberately the one sensor the outdoor exclusion is meant to find.
+    outdoorAqi: companionEntity(states, fanEntity, "sensor", ["outdoor_aqi"]),
+    connectionStatus: companionEntity(states, fanEntity, "sensor", ["connection_status"]),
+    wifiSignal: companionEntity(states, fanEntity, "sensor", ["wifi_signal"]),
+    scheduledEvents: companionEntity(states, fanEntity, "sensor", ["scheduled_events"]),
+    faults: faults(states, fanEntity)
   }
 }
 
@@ -214,6 +262,68 @@ function percentageFromSpeed(speed, attrs) {
 
 // PM2.5 bands in µg/m³, following the WHO 2021 24-hour guidance the Dyson app
 // broadly tracks. Only "poor" and "bad" are surfaced — see View.airQualityAlarm.
+// --- sweep aiming ---------------------------------------------------------
+//
+// Every ec device reports `angle_low`/`angle_high` on its fan entity, but the
+// number entities that would let you set them are gated behind an
+// AdvanceOscillation capability many models — the HP02 among them — do not
+// advertise. The integration's own `hass_dyson.set_oscillation_angles` service
+// has no such gate, so aiming goes through that on every model rather than
+// through entities that exist on only some.
+//
+// Angles are absolute to the machine's own zero, not to the room. "Left" is
+// therefore the low end of its travel, whichever way the unit is pointing.
+var ANGLE_MIN = 0
+var ANGLE_MAX = 350
+var ANGLE_STEP = 5           // the service's own selector step
+
+function clampAngle(value, fallback) {
+  // Number("") and Number(null) are both 0, so a missing angle would clamp to
+  // 0° — a real position — rather than fall back. Reject the blanks first.
+  if (value === "" || value === null || value === undefined) return fallback
+  var n = Number(value)
+  if (!isFinite(n)) return fallback
+  n = Math.round(n / ANGLE_STEP) * ANGLE_STEP
+  return Math.max(ANGLE_MIN, Math.min(ANGLE_MAX, n))
+}
+
+// The full travel split into thirds, plus the whole sweep. Rounded to the
+// service's step so a preset and the slider that follows it agree.
+function anglePresets() {
+  var third = Math.round((ANGLE_MAX - ANGLE_MIN) / 3 / ANGLE_STEP) * ANGLE_STEP
+  return [
+    { value: "left", label: "Left", low: ANGLE_MIN, high: ANGLE_MIN + third },
+    { value: "centre", label: "Centre", low: ANGLE_MIN + third, high: ANGLE_MAX - third },
+    { value: "right", label: "Right", low: ANGLE_MAX - third, high: ANGLE_MAX },
+    { value: "wide", label: "Wide", low: ANGLE_MIN, high: ANGLE_MAX }
+  ]
+}
+
+// Which preset the device is currently sitting on, or "" for a custom range.
+// Exact rather than nearest: a chip lit for a range it does not describe would
+// misreport where the fan is actually pointing.
+function activeAnglePreset(low, high) {
+  var l = clampAngle(low, NaN)
+  var h = clampAngle(high, NaN)
+  if (!isFinite(l) || !isFinite(h)) return ""
+  var presets = anglePresets()
+  for (var i = 0; i < presets.length; i++)
+    if (presets[i].low === l && presets[i].high === h) return presets[i].value
+  return ""
+}
+
+// Moving one end must not push it past the other. The end the user did not
+// touch stays put and the moved one is stopped against it, so a drag can never
+// silently swap which end is which. Equal ends are legal: that is the device's
+// point-aim mode, the fan held still facing one way.
+function angleRange(low, high, moved) {
+  var l = clampAngle(low, ANGLE_MIN)
+  var h = clampAngle(high, ANGLE_MAX)
+  if (moved === "low") return { low: Math.min(l, h), high: h }
+  if (moved === "high") return { low: l, high: Math.max(h, l) }
+  return l <= h ? { low: l, high: h } : { low: h, high: l }
+}
+
 function pm25Band(value) {
   // A missing reading arrives as "", and Number("") is 0 — which would band an
   // absent sensor as pristine air. Reject blanks before coercing.
@@ -375,4 +485,7 @@ function stalenessMs(states, fanEntity, now) {
 // QML imports this file directly and never defines `module`; the guard lets
 // node require() the same source so coverage instrumentation can see it.
 if (typeof module !== "undefined") module.exports = { pm25Band: pm25Band, shouldReconnect: shouldReconnect, isStale: isStale,
-  RECONNECT_INTERVAL_MS: RECONNECT_INTERVAL_MS, airQualityAlarm: airQualityAlarm, companionEntity: companionEntity, deviceEntities: deviceEntities, discover: discover, hasPreset: hasPreset, historyStats: historyStats, isAutoMode: isAutoMode, isDysonFan: isDysonFan, listFans: listFans, modelName: modelName, newestUpdate: newestUpdate, parseHistory: parseHistory, percentageFromSpeed: percentageFromSpeed, primaryEntity: primaryEntity, resolveFan: resolveFan, sensorByClass: sensorByClass, sensorByName: sensorByName, serialFromName: serialFromName, slugOf: slugOf, speedFromPercentage: speedFromPercentage, stalenessMs: stalenessMs, stepsFor: stepsFor, MODEL_NAMES: MODEL_NAMES }
+  RECONNECT_INTERVAL_MS: RECONNECT_INTERVAL_MS, airQualityAlarm: airQualityAlarm, companionEntity: companionEntity, deviceEntities: deviceEntities, discover: discover, hasPreset: hasPreset, historyStats: historyStats, isAutoMode: isAutoMode, isDysonFan: isDysonFan, listFans: listFans, modelName: modelName, newestUpdate: newestUpdate, parseHistory: parseHistory, percentageFromSpeed: percentageFromSpeed, primaryEntity: primaryEntity, resolveFan: resolveFan, sensorByClass: sensorByClass, sensorByName: sensorByName, serialFromName: serialFromName, slugOf: slugOf, speedFromPercentage: speedFromPercentage, stalenessMs: stalenessMs, stepsFor: stepsFor, MODEL_NAMES: MODEL_NAMES,
+  faults: faults, activeFaults: activeFaults, clampAngle: clampAngle,
+  anglePresets: anglePresets, activeAnglePreset: activeAnglePreset, angleRange: angleRange,
+  ANGLE_MIN: ANGLE_MIN, ANGLE_MAX: ANGLE_MAX, ANGLE_STEP: ANGLE_STEP }

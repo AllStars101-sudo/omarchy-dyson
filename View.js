@@ -104,10 +104,74 @@ function sections(m) {
     tilt: selectOptions(m.tiltOptions).length > 0,
     nightMode: !!m.nightSwitch,
     autoMode: !!m.autoSupported,
+    sleepTimer: !!m.sleepTimerEntity,
+    monitoring: !!m.monitorSwitch,
+    heatingMode: (m.heatingModeOptions || []).length > 1,
+    waterHardness: (m.waterHardnessOptions || []).length > 1,
+    direction: !!m.directionSupported,
     airQuality: readings(m).length > 0,
     graph: (m.historyPoints || 0) > 1,
-    filterWarning: !!m.filterDue
+    filterWarning: !!m.filterDue,
+    // Aiming needs somewhere to aim: with the head still there is nothing to
+    // narrow. The service works on every model, so unlike the other controls
+    // this one is not gated on an entity existing.
+    aiming: !!m.oscillating && !!m.fanEntity,
+    details: details(m).length > 0,
+    // Diagnostics stay folded away until something in them is worth reading.
+    detailsOpenByDefault: activeFaultCount(m) > 0 || !!m.filterDue
   }
+}
+
+function activeFaultCount(m) {
+  var list = m.faults || []
+  var n = 0
+  for (var i = 0; i < list.length; i++) if (list[i].active) n++
+  return n
+}
+
+// --- diagnostics ----------------------------------------------------------
+
+// The read-only half: everything Home Assistant knows about the device that no
+// control acts on. Each row is {label, value, alarm}; absent entities produce
+// no row, so a device that reports little shows a short list rather than a
+// column of dashes.
+function details(m) {
+  var out = []
+  function add(label, value, alarm) {
+    if (value === "" || value === null || value === undefined) return
+    out.push({ label: label, value: String(value), alarm: !!alarm })
+  }
+
+  var air = m.aqiCategory || ""
+  if (air && m.dominantPollutant) air += " · " + m.dominantPollutant + " leading"
+  add("Air quality", air)
+  add("Outdoor AQI", m.outdoorAqi)
+
+  add("HEPA filter", filterLine(m.hepaFilter, m.hepaFilterType), !!m.filterDue)
+  add("Carbon filter", filterLine(m.carbonFilter, m.carbonFilterType))
+
+  var link = m.connectionStatus || ""
+  if (link && isFiniteNumber(m.wifiSignal)) link += " · " + m.wifiSignal + " dBm"
+  else if (!link && isFiniteNumber(m.wifiSignal)) link = m.wifiSignal + " dBm"
+  add("Connection", link)
+  add("Schedule", m.scheduledEvents)
+
+  var faults = m.faults || []
+  if (faults.length) {
+    var bad = []
+    for (var i = 0; i < faults.length; i++) if (faults[i].active) bad.push(faults[i].label)
+    add("Faults", bad.length ? bad.join(", ") : "None reported", bad.length > 0)
+  }
+  return out
+}
+
+// Percentage and cartridge type read as one fact, and either half can be
+// missing: a device with no cartridge fitted reports a type and no life.
+function filterLine(life, type) {
+  var parts = []
+  if (isFiniteNumber(life)) parts.push(life + "%")
+  if (type) parts.push(String(type))
+  return parts.join(" · ")
 }
 
 // --- readings -------------------------------------------------------------
@@ -174,6 +238,29 @@ function airflowOptions(fanModes) {
     out.push({ value: mode, label: label })
   }
   return out
+}
+
+// Minutes as the device counts them. Zero is off rather than "0m", which would
+// read as a timer about to fire.
+function sleepTimerLabel(minutes) {
+  if (!isFiniteNumber(minutes)) return ""
+  var m = Math.max(0, Math.round(Number(minutes)))
+  if (m === 0) return "Off"
+  if (m < 60) return m + "m"
+  var h = Math.floor(m / 60)
+  var rest = m % 60
+  return rest ? h + "h " + rest + "m" : h + "h"
+}
+
+// What the current sweep range means in words. Absolute to the machine's own
+// zero, so this describes the arc rather than naming a direction in the room.
+function angleLabel(low, high, minAngle, maxAngle) {
+  if (!isFiniteNumber(low) || !isFiniteNumber(high)) return ""
+  var l = Number(low)
+  var h = Number(high)
+  if (l === h) return "Held at " + l + "°"
+  if (l <= minAngle && h >= maxAngle) return "Full sweep"
+  return l + "° – " + h + "°  (" + (h - l) + "° arc)"
 }
 
 // A Home Assistant `select` renders as a chip row. The labels are the
@@ -280,6 +367,8 @@ if (typeof module !== "undefined") module.exports = {
   isFiniteNumber: isFiniteNumber, sections: sections, readings: readings,
   readingText: readingText, readingColorKey: readingColorKey, hvacOptions: hvacOptions,
   selectOptions: selectOptions, airflowOptions: airflowOptions,
+  details: details, filterLine: filterLine, activeFaultCount: activeFaultCount,
+  sleepTimerLabel: sleepTimerLabel, angleLabel: angleLabel,
   deviceOptions: deviceOptions, spinDurationMs: spinDurationMs,
   placements: placements, connectionStatus: connectionStatus, settingsTab: settingsTab
 }

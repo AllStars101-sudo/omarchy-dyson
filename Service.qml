@@ -106,6 +106,46 @@ Item {
       function(text) { onName(Dyson.modelName(text)) }, true)
   }
 
+  // Two of hass-dyson's services are keyed by device_id rather than entity_id,
+  // and the device registry is websocket-only — so the id is resolved through
+  // the template API, the same route the model name already takes. Cached per
+  // fan: it cannot change without the entity itself changing.
+  property var deviceIds: ({})
+
+  function withDeviceId(fanEntity, onId) {
+    if (!fanEntity) return
+    if (deviceIds[fanEntity]) { onId(deviceIds[fanEntity]); return }
+    request("POST", "/api/template",
+      { template: "{{ device_id('" + fanEntity + "') }}" },
+      function(text) {
+        var id = String(text || "").trim()
+        // An unresolved template renders as the literal "None".
+        if (!id || id === "None") {
+          root.lastError = "Home Assistant could not identify that device"
+          return
+        }
+        var next = {}
+        for (var key in root.deviceIds) next[key] = root.deviceIds[key]
+        next[fanEntity] = id
+        root.deviceIds = next
+        onId(id)
+      }, true)
+  }
+
+  function setOscillationAngles(fanEntity, low, high) {
+    withDeviceId(fanEntity, function(deviceId) {
+      root.callService("hass_dyson", "set_oscillation_angles",
+        { device_id: deviceId, lower_angle: low, upper_angle: high })
+    })
+  }
+
+  function resetFilter(fanEntity, filterType) {
+    withDeviceId(fanEntity, function(deviceId) {
+      root.callService("hass_dyson", "reset_filter",
+        { device_id: deviceId, filter_type: filterType })
+    })
+  }
+
   function fetchHistory(entity, hours, onPoints) {
     if (!entity) return
     var start = new Date(Date.now() - hours * 3600 * 1000).toISOString()

@@ -578,3 +578,126 @@ describe("liveness", () => {
     assert.ok(Dyson.stalenessMs(fresh, "fan.d") < 5000)
   })
 })
+
+describe("faults", () => {
+  const withFaults = (...rows) => [
+    fx.entity("fan.dyson_f", "on", { friendly_name: "Dyson FFF-EU-5555555",
+                                     percentage: 10, percentage_step: 10.0 }),
+    ...rows
+  ]
+
+  test("fault sensors are a family, matched on the prefix", () => {
+    // Which subsystems a model reports varies, so these cannot be a fixed list.
+    const list = Dyson.faults(withFaults(
+      fx.entity("binary_sensor.dyson_f_fault_motor", "off"),
+      fx.entity("binary_sensor.dyson_f_fault_power_supply", "on"),
+      fx.entity("binary_sensor.dyson_f_fault_wifi_connection", "off")
+    ), "fan.dyson_f")
+    assert.deepEqual(list.map(f => f.label), ["Motor", "Power supply", "Wifi connection"],
+      "sorted, so the panel does not reshuffle between polls")
+    assert.deepEqual(list.map(f => f.active), [false, true, false])
+    assert.equal(list[0].entityId, "binary_sensor.dyson_f_fault_motor")
+  })
+
+  test("only fault sensors, and only this device's", () => {
+    const list = Dyson.faults(withFaults(
+      fx.entity("binary_sensor.dyson_f_fault_motor", "off"),
+      fx.entity("binary_sensor.dyson_f_filter_replacement", "on"),
+      fx.entity("binary_sensor.dyson_other_fault_motor", "on")
+    ), "fan.dyson_f")
+    assert.deepEqual(list.map(f => f.entityId), ["binary_sensor.dyson_f_fault_motor"])
+  })
+
+  test("anything that is not a clear off counts as unresolved", () => {
+    // A reconnecting device reports `unavailable`, which must not read as
+    // all-clear — a silent sensor is not a healthy one.
+    const list = Dyson.faults(withFaults(
+      fx.entity("binary_sensor.dyson_f_fault_a", "off"),
+      fx.entity("binary_sensor.dyson_f_fault_b", "unavailable"),
+      fx.entity("binary_sensor.dyson_f_fault_c", "unknown")
+    ), "fan.dyson_f")
+    assert.deepEqual(list.map(f => f.active), [false, true, true])
+    assert.deepEqual(Dyson.activeFaults(list).map(f => f.label), ["B", "C"])
+  })
+
+  test("a device with no fault sensors", () => {
+    assert.deepEqual(Dyson.faults(fx.sparse, "fan.dyson_sparse"), [])
+    assert.deepEqual(Dyson.faults(fx.tp09, "fan.dyson_tp09"), [])
+    assert.deepEqual(Dyson.activeFaults([]), [])
+    assert.deepEqual(Dyson.activeFaults(null), [])
+  })
+
+  test("discover carries the fault list", () => {
+    assert.deepEqual(Dyson.discover(fx.sparse, "fan.dyson_sparse").faults, [])
+  })
+})
+
+describe("sweep aiming", () => {
+  test("angles snap to the step the service accepts", () => {
+    // The service's selector steps by 5°, so an unsnapped angle would either be
+    // rejected or silently rounded somewhere this code cannot see.
+    assert.equal(Dyson.clampAngle(0, -1), 0)
+    assert.equal(Dyson.clampAngle(350, -1), 350)
+    assert.equal(Dyson.clampAngle(117, -1), 115)
+    assert.equal(Dyson.clampAngle(118, -1), 120)
+    assert.equal(Dyson.clampAngle(-40, -1), 0, "clamped to the low end")
+    assert.equal(Dyson.clampAngle(9999, -1), 350, "clamped to the high end")
+    assert.equal(Dyson.clampAngle("175", -1), 175, "a string state still parses")
+    assert.equal(Dyson.clampAngle("", -1), -1, 'Number("") is 0, so blanks must be rejected first')
+    assert.equal(Dyson.clampAngle(null, -1), -1)
+    assert.equal(Dyson.clampAngle(undefined, -1), -1)
+    assert.equal(Dyson.clampAngle("x", -1), -1)
+    assert.equal(Dyson.clampAngle(Infinity, -1), -1)
+  })
+
+  test("the presets tile the travel without gaps or overlap", () => {
+    const p = Dyson.anglePresets()
+    assert.deepEqual(p.map(e => e.value), ["left", "centre", "right", "wide"])
+    assert.equal(p[0].low, Dyson.ANGLE_MIN)
+    assert.equal(p[2].high, Dyson.ANGLE_MAX)
+    assert.equal(p[0].high, p[1].low, "left ends where centre begins")
+    assert.equal(p[1].high, p[2].low, "centre ends where right begins")
+    assert.equal(p[3].low, Dyson.ANGLE_MIN)
+    assert.equal(p[3].high, Dyson.ANGLE_MAX)
+    for (const e of p) {
+      assert.equal(e.low % Dyson.ANGLE_STEP, 0, `${e.value} low is on the step`)
+      assert.equal(e.high % Dyson.ANGLE_STEP, 0, `${e.value} high is on the step`)
+      assert.ok(e.low < e.high, `${e.value} spans an arc`)
+    }
+  })
+
+  test("a preset lights only for the range it actually describes", () => {
+    // A nearest-match would light "Left" for a range pointing elsewhere, which
+    // misreports where the fan is aimed.
+    const left = Dyson.anglePresets()[0]
+    assert.equal(Dyson.activeAnglePreset(left.low, left.high), "left")
+    assert.equal(Dyson.activeAnglePreset(0, 350), "wide")
+    assert.equal(Dyson.activeAnglePreset(left.low, left.high + 5), "",
+      "five degrees off is a custom range, not a preset")
+    assert.equal(Dyson.activeAnglePreset(90, 200), "")
+    assert.equal(Dyson.activeAnglePreset("", 350), "", "a blank angle is not zero")
+    assert.equal(Dyson.activeAnglePreset(null, null), "")
+    assert.equal(Dyson.activeAnglePreset(0, "x"), "")
+  })
+
+  test("moving one end stops against the other rather than swapping it", () => {
+    assert.deepEqual(Dyson.angleRange(50, 200, "low"), { low: 50, high: 200 })
+    assert.deepEqual(Dyson.angleRange(250, 200, "low"), { low: 200, high: 200 },
+      "the low end cannot be dragged past the high one")
+    assert.deepEqual(Dyson.angleRange(100, 50, "high"), { low: 100, high: 100 },
+      "nor the high past the low")
+    assert.deepEqual(Dyson.angleRange(100, 200, "high"), { low: 100, high: 200 })
+  })
+
+  test("equal ends are legal: that is the device holding one direction", () => {
+    assert.deepEqual(Dyson.angleRange(180, 180, "low"), { low: 180, high: 180 })
+    assert.deepEqual(Dyson.angleRange(180, 180, "high"), { low: 180, high: 180 })
+  })
+
+  test("an inverted pair with no moved end is ordered, not rejected", () => {
+    assert.deepEqual(Dyson.angleRange(300, 100, ""), { low: 100, high: 300 })
+    assert.deepEqual(Dyson.angleRange(100, 300, ""), { low: 100, high: 300 })
+    assert.deepEqual(Dyson.angleRange(null, null, ""), { low: 0, high: 350 },
+      "missing angles fall back to the full travel")
+  })
+})

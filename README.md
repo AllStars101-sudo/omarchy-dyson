@@ -55,8 +55,15 @@ Removing the plugin does not remove your token from the keyring. The
 | Bar, middle click | Toggle power |
 | Bar, scroll | Speed up / down |
 | Panel | Off / Fan / Heat, target temperature, humidity, speed |
-| Panel | Oscillation, sweep width, tilt, night mode, auto mode |
+| Panel | Focused / diffused airflow, front / back direction |
+| Panel | Oscillation, sweep width, tilt, sweep aiming |
+| Panel | Night mode, auto mode, continuous monitoring, sleep timer |
+| Panel | Heating mode, water hardness |
 | Panel | PM2.5 graph, air quality readings, filter life |
+| Panel | Details: faults, filters, connection, schedule, filter reset |
+
+Every one of those is drawn only when the device has it. Nothing is greyed out;
+a control that cannot act is not there.
 
 Omarchy's bar hotkey (Super+Ctrl+N for the Nth panel in a section) opens the
 panel, not the settings overlay.
@@ -106,6 +113,29 @@ Two matching rules:
 - Air quality sensors match on `device_class`, not name. Older models call PM2.5
   `particulates`, newer ones `pm25`. Formaldehyde is the exception, since Home
   Assistant has no HCHO device class.
+- Fault sensors match on the `fault_` prefix, because which subsystems a model
+  reports varies and a fixed list would miss the ones nobody here has seen.
+
+Option lists are read off the entity too. The sweep-width chips show 45/90/180/
+350 or 15/40/70 depending on the model's capability, and Breeze only where the
+device offers it — none of that is written down in this plugin.
+
+## Aiming
+
+Oscillation is on or off in the MyDyson app. Home Assistant can do better: the
+fan reports `angle_low` and `angle_high`, and hass-dyson's
+`set_oscillation_angles` service sets them, so the panel offers Left, Centre,
+Right and Wide plus two sliders for an arbitrary arc. Setting both ends to the
+same angle holds the head still, facing that way.
+
+The angles are absolute to the machine's own zero, not to the room, so "Left"
+means the low end of its travel — which way that points depends on how the unit
+is turned. Find it once and it stays put.
+
+This goes through the service rather than the `number.*_oscillation_*_angle`
+entities on purpose. Those exist only on models advertising an
+`AdvanceOscillation` capability; the service has no such gate, so aiming works
+on every model rather than the subset that happens to expose the entities.
 
 ## Staleness
 
@@ -125,7 +155,7 @@ minutes.
 
 | Model | Type | What was exercised |
 |---|---|---|
-| Pure Hot+Cool Link (HP02) | 455 | Heat, speed, oscillation, night mode, air quality, graph, staleness, settings |
+| Pure Hot+Cool Link (HP02) | 455 | Heat, speed, focused/diffused airflow, oscillation, sweep aiming, night mode, continuous monitoring, sleep timer, air quality, graph, faults, staleness, settings |
 
 ### Untested, should work
 

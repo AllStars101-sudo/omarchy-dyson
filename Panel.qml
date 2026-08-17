@@ -79,6 +79,30 @@ Panel {
   readonly property string angleMode: (stateOf(caps.oscillationMode) || {}).state || ""
   readonly property var tiltOptions: attrsOf(caps.tiltMode).options || []
   readonly property string tiltMode: (stateOf(caps.tiltMode) || {}).state || ""
+  // Sweep aiming. Absolute to the machine's zero; the fan entity reports these
+  // on every model even where no number entity exists to set them.
+  readonly property int angleLow: Dyson.clampAngle(fanAttrs.angle_low, Dyson.ANGLE_MIN)
+  readonly property int angleHigh: Dyson.clampAngle(fanAttrs.angle_high, Dyson.ANGLE_MAX)
+  readonly property string anglePreset: Dyson.activeAnglePreset(fanAttrs.angle_low, fanAttrs.angle_high)
+
+  // Home Assistant's FanEntityFeature.DIRECTION is bit 4. The attribute is
+  // present on devices that cannot act on it, so the feature bit is the test.
+  readonly property bool directionSupported: (Number(fanAttrs.supported_features) & 4) !== 0
+  readonly property string fanDirection: String(fanAttrs.direction || "forward")
+
+  readonly property var heatingModeOptions: attrsOf(caps.heatingMode).options || []
+  readonly property string heatingModeValue: (stateOf(caps.heatingMode) || {}).state || ""
+  readonly property var waterHardnessOptions: attrsOf(caps.waterHardness).options || []
+  readonly property string waterHardnessValue: (stateOf(caps.waterHardness) || {}).state || ""
+
+  readonly property var sleepTimerAttrs: attrsOf(caps.sleepTimer)
+  readonly property int sleepTimerMinutes: {
+    var v = Number((stateOf(caps.sleepTimer) || {}).state)
+    return isFinite(v) ? Math.round(v) : 0
+  }
+  readonly property bool monitoring: (stateOf(caps.monitorSwitch) || {}).state === "on"
+  readonly property bool firmwareAuto: (stateOf(caps.firmwareAutoUpdate) || {}).state === "on"
+
   readonly property string rawName: fanAttrs.friendly_name || "Dyson"
   readonly property string serial: Dyson.serialFromName(rawName)
 
@@ -130,6 +154,15 @@ Panel {
   readonly property string aqi: numberOf(caps.aqi)
   readonly property string humidity: numberOf(caps.humidity)
   readonly property string hepaFilter: numberOf(caps.hepaFilter)
+  readonly property string carbonFilter: numberOf(caps.carbonFilter)
+  readonly property string hepaFilterType: (stateOf(caps.hepaFilterType) || {}).state || ""
+  readonly property string carbonFilterType: (stateOf(caps.carbonFilterType) || {}).state || ""
+  readonly property string aqiCategory: (stateOf(caps.aqiCategory) || {}).state || ""
+  readonly property string dominantPollutant: (stateOf(caps.dominantPollutant) || {}).state || ""
+  readonly property string outdoorAqi: numberOf(caps.outdoorAqi)
+  readonly property string connectionStatus: (stateOf(caps.connectionStatus) || {}).state || ""
+  readonly property string wifiSignal: numberOf(caps.wifiSignal)
+  readonly property string scheduledEvents: (stateOf(caps.scheduledEvents) || {}).state || ""
   // The single colour exception: PM2.5 past the WHO guideline.
   readonly property bool airAlarm: Dyson.airQualityAlarm(pm25)
 
@@ -231,6 +264,37 @@ Panel {
     if (!actionable || !entityId || !option) return
     service.callService("select", "select_option", { entity_id: entityId, option: option })
   }
+  function setSwitch(entityId, on) {
+    if (!actionable || !entityId) return
+    service.callService("switch", on ? "turn_on" : "turn_off", { entity_id: entityId })
+  }
+  function setNumber(entityId, value) {
+    if (!actionable || !entityId) return
+    service.callService("number", "set_value", { entity_id: entityId, value: value })
+  }
+  function setDirection(direction) {
+    if (!actionable || !directionSupported) return
+    service.callService("fan", "set_direction", { entity_id: fanEntity, direction: direction })
+  }
+  function setAngles(low, high) {
+    if (!actionable) return
+    if (low === angleLow && high === angleHigh) return
+    service.setOscillationAngles(fanEntity, low, high)
+  }
+  function applyAnglePreset(name) {
+    var presets = Dyson.anglePresets()
+    for (var i = 0; i < presets.length; i++)
+      if (presets[i].value === name) { setAngles(presets[i].low, presets[i].high); return }
+  }
+  function moveAngle(which, value) {
+    var next = Dyson.angleRange(which === "low" ? value : angleLow,
+                                which === "high" ? value : angleHigh, which)
+    setAngles(next.low, next.high)
+  }
+  function resetFilter(kind) {
+    if (!actionable) return
+    service.resetFilter(fanEntity, kind)
+  }
   function toggleNight() {
     if (!actionable || !caps.nightSwitch) return
     service.callService("switch", nightMode ? "turn_off" : "turn_on", { entity_id: caps.nightSwitch })
@@ -300,11 +364,26 @@ Panel {
     nightSwitch: caps.nightSwitch || "", autoSupported: autoSupported,
     oscillating: oscillating, angleOptions: angleOptions, tiltOptions: tiltOptions,
     fanModes: fanModes,
+    sleepTimerEntity: caps.sleepTimer || "", monitorSwitch: caps.monitorSwitch || "",
+    heatingModeOptions: heatingModeOptions, waterHardnessOptions: waterHardnessOptions,
+    directionSupported: directionSupported,
+    aqiCategory: aqiCategory, dominantPollutant: dominantPollutant, outdoorAqi: outdoorAqi,
+    carbonFilter: carbonFilter, hepaFilterType: hepaFilterType,
+    carbonFilterType: carbonFilterType, connectionStatus: connectionStatus,
+    wifiSignal: wifiSignal, scheduledEvents: scheduledEvents, faults: caps.faults || [],
     filterDue: filterDue, historyPoints: historyPoints.length,
     pm25: pm25, pm10: pm10, voc: voc, no2: no2, co2: co2, hcho: hcho,
     aqi: aqi, humidity: humidity, hepaFilter: hepaFilter
   })
   readonly property var view: View.sections(viewModel)
+
+  // Details starts open when something in it is worth reading — an active
+  // fault, a filter due — and closed otherwise. Tri-state so a click is a real
+  // override in both directions: -1 follows the default, 0 and 1 are the user's.
+  property int detailsChoice: -1
+  readonly property int faultCount: View.activeFaultCount(viewModel)
+  readonly property bool detailsOpen: detailsChoice === -1
+    ? view.detailsOpenByDefault : detailsChoice === 1
 
 
   readonly property string barLabel: View.barLabel(viewModel)
@@ -565,26 +644,6 @@ Panel {
             onMoved: function(v) { root.setSpeed(v) }
           }
 
-          // ---------- Modes ----------
-          PanelSectionHeader {
-            width: parent.width
-            text: "Modes"
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-          }
-
-          Toggle {
-            width: parent.width
-            label: "Oscillation"
-            description: "Sweep left and right"
-            checked: root.oscillating
-            enabled: root.actionable
-            opacity: root.actionable ? 1 : 0.4
-            foreground: root.bar.foreground
-            fontFamily: root.bar.fontFamily
-            onClicked: root.toggleOscillation()
-          }
-
           PanelSectionHeader {
             width: parent.width
             text: "Airflow"
@@ -604,6 +663,26 @@ Panel {
             options: View.airflowOptions(root.fanModes)
             value: root.fanMode
             onChanged: function(v) { root.setFanMode(v) }
+          }
+
+          // ---------- Modes ----------
+          PanelSectionHeader {
+            width: parent.width
+            text: "Modes"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          Toggle {
+            width: parent.width
+            label: "Oscillation"
+            description: "Sweep left and right"
+            checked: root.oscillating
+            enabled: root.actionable
+            opacity: root.actionable ? 1 : 0.4
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            onClicked: root.toggleOscillation()
           }
 
           PanelSectionHeader {
@@ -648,6 +727,61 @@ Panel {
             onChanged: function(v) { root.setSelectOption(root.caps.tiltMode, v) }
           }
 
+          PanelSectionHeader {
+            width: parent.width
+            text: "Aim"
+            visible: root.view.aiming
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          ButtonGroup {
+            width: parent.width
+            visible: root.view.aiming
+            enabled: root.actionable
+            opacity: root.actionable ? 1 : 0.4
+            foreground: root.bar.foreground
+            background: root.bar.background
+            fontFamily: root.bar.fontFamily
+            options: Dyson.anglePresets()
+            value: root.anglePreset
+            onChanged: function(v) { root.applyAnglePreset(v) }
+          }
+
+          Text {
+            width: parent.width
+            visible: root.view.aiming
+            text: View.angleLabel(root.angleLow, root.angleHigh, Dyson.ANGLE_MIN, Dyson.ANGLE_MAX)
+            color: root.bar.foreground
+            opacity: 0.7
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+
+          // Posted on release, not on every drag step: each call reaches the
+          // fan over MQTT, and a drag emits dozens of intermediate values.
+          PanelSlider {
+            width: parent.width
+            visible: root.view.aiming
+            bar: root.bar
+            enabled: root.actionable
+            minimum: Dyson.ANGLE_MIN; maximum: Dyson.ANGLE_MAX
+            step: Dyson.ANGLE_STEP; integer: true
+            value: root.angleLow
+            onReleased: function(v) { root.moveAngle("low", v) }
+          }
+
+          PanelSlider {
+            width: parent.width
+            visible: root.view.aiming
+            bar: root.bar
+            enabled: root.actionable
+            minimum: Dyson.ANGLE_MIN; maximum: Dyson.ANGLE_MAX
+            step: Dyson.ANGLE_STEP; integer: true
+            value: root.angleHigh
+            onReleased: function(v) { root.moveAngle("high", v) }
+          }
+
           // Hidden rather than greyed when the device has no such control: a
           // permanently dead row is worse than a shorter panel.
           Toggle {
@@ -672,6 +806,106 @@ Panel {
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
             onClicked: root.toggleAuto()
+          }
+
+          Toggle {
+            width: parent.width
+            label: "Continuous monitoring"
+            description: "Keep sensing air quality while the fan is off"
+            checked: root.monitoring
+            visible: root.view.monitoring
+            enabled: root.actionable
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            onClicked: root.setSwitch(root.caps.monitorSwitch, !root.monitoring)
+          }
+
+          Row {
+            width: parent.width
+            visible: root.view.direction
+            spacing: Style.space(10)
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Airflow direction"
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+
+            ButtonGroup {
+              enabled: root.actionable
+              opacity: root.actionable ? 1 : 0.4
+              foreground: root.bar.foreground
+              background: root.bar.background
+              fontFamily: root.bar.fontFamily
+              options: [{ value: "forward", label: "Front" }, { value: "reverse", label: "Back" }]
+              value: root.fanDirection
+              onChanged: function(v) { root.setDirection(v) }
+            }
+          }
+
+          PanelSectionHeader {
+            width: parent.width
+            text: "Heating mode"
+            visible: root.view.heatingMode
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          ButtonGroup {
+            width: parent.width
+            visible: root.view.heatingMode
+            enabled: root.actionable
+            opacity: root.actionable ? 1 : 0.4
+            foreground: root.bar.foreground
+            background: root.bar.background
+            fontFamily: root.bar.fontFamily
+            options: View.selectOptions(root.heatingModeOptions)
+            value: root.heatingModeValue
+            onChanged: function(v) { root.setSelectOption(root.caps.heatingMode, v) }
+          }
+
+          PanelSectionHeader {
+            width: parent.width
+            text: "Water hardness"
+            visible: root.view.waterHardness
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          ButtonGroup {
+            width: parent.width
+            visible: root.view.waterHardness
+            enabled: root.actionable
+            opacity: root.actionable ? 1 : 0.4
+            foreground: root.bar.foreground
+            background: root.bar.background
+            fontFamily: root.bar.fontFamily
+            options: View.selectOptions(root.waterHardnessOptions)
+            value: root.waterHardnessValue
+            onChanged: function(v) { root.setSelectOption(root.caps.waterHardness, v) }
+          }
+
+          PanelSectionHeader {
+            width: parent.width
+            text: "Sleep timer · " + View.sleepTimerLabel(root.sleepTimerMinutes)
+            visible: root.view.sleepTimer
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          PanelSlider {
+            width: parent.width
+            visible: root.view.sleepTimer
+            bar: root.bar
+            enabled: root.actionable
+            minimum: 0
+            maximum: Number(root.sleepTimerAttrs.max || 540)
+            step: Number(root.sleepTimerAttrs.step || 15)
+            integer: true
+            value: root.sleepTimerMinutes
+            onReleased: function(v) { root.setNumber(root.caps.sleepTimer, v) }
           }
 
           // ---------- Air quality ----------
@@ -803,6 +1037,115 @@ Panel {
             color: root.bar.foreground
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.caption
+          }
+
+          // ---------- Details ----------
+          // Read-only diagnostics, folded away unless something in them wants
+          // reading. Opening it is sticky for the session but never overrides
+          // the auto-open, so a fault that appears while the panel is shut is
+          // still visible when it next opens.
+          Item {
+            width: parent.width
+            visible: root.view.details
+            implicitHeight: detailsHeader.implicitHeight + Style.space(6)
+
+            Text {
+              id: detailsHeader
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              text: (root.detailsOpen ? "▾  Details" : "▸  Details")
+              color: root.bar.foreground
+              opacity: 0.7
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.caption
+              font.bold: true
+            }
+
+            Text {
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              visible: root.faultCount > 0
+              text: root.faultCount + (root.faultCount === 1 ? " fault" : " faults")
+              color: Color.urgent
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.detailsChoice = root.detailsOpen ? 0 : 1
+            }
+          }
+
+          Grid {
+            id: detailRows
+            width: parent.width
+            columns: 2
+            columnSpacing: Style.space(10)
+            rowSpacing: Style.space(6)
+            visible: root.view.details && root.detailsOpen
+
+            readonly property var entries: View.details(root.viewModel)
+
+            Repeater {
+              model: detailRows.entries
+
+              Item {
+                required property var modelData
+                width: (detailRows.width - Style.space(10)) / 2
+                implicitHeight: Math.max(detailLabel.implicitHeight, detailValue.implicitHeight)
+
+                Text {
+                  id: detailLabel
+                  anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+                  text: parent.modelData.label
+                  color: root.bar.foreground; opacity: 0.6
+                  font.family: root.bar.fontFamily; font.pixelSize: Style.font.caption
+                }
+
+                Text {
+                  id: detailValue
+                  anchors.right: parent.right
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: parent.width - detailLabel.implicitWidth - Style.space(8)
+                  horizontalAlignment: Text.AlignRight
+                  elide: Text.ElideRight
+                  text: parent.modelData.value
+                  color: parent.modelData.alarm ? Color.urgent : root.bar.foreground
+                  font.family: root.bar.fontFamily; font.pixelSize: Style.font.caption
+                }
+              }
+            }
+          }
+
+          Toggle {
+            width: parent.width
+            visible: root.view.details && root.detailsOpen && root.caps.firmwareAutoUpdate !== ""
+            label: "Firmware auto-update"
+            description: "Let the device update itself"
+            checked: root.firmwareAuto
+            enabled: root.actionable
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            onClicked: root.setSwitch(root.caps.firmwareAutoUpdate, !root.firmwareAuto)
+          }
+
+          Row {
+            width: parent.width
+            visible: root.view.details && root.detailsOpen && root.caps.hepaFilter !== ""
+            spacing: Style.space(8)
+
+            Button {
+              enabled: root.actionable
+              opacity: root.actionable ? 1 : 0.4
+              text: "Reset filter life"
+              bordered: true
+              foreground: root.bar.foreground
+              background: root.bar.background
+              fontFamily: root.bar.fontFamily
+              onClicked: root.resetFilter(root.caps.carbonFilter !== "" ? "both" : "hepa")
+            }
           }
         }
       }

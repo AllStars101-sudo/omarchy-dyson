@@ -293,9 +293,11 @@ describe("which rows exist", () => {
     assert.deepEqual({ ...s }, {
       deviceSwitcher: false, climate: false, powerToggle: true, targetTemp: false,
       humidifier: false, humiditySlider: false, airflow: false,
-      oscillationAngle: false, tilt: false,
-      nightMode: false, autoMode: false,
-      airQuality: false, graph: false, filterWarning: false
+      oscillationAngle: false, tilt: false, aiming: false,
+      nightMode: false, autoMode: false, sleepTimer: false, monitoring: false,
+      heatingMode: false, waterHardness: false, direction: false,
+      airQuality: false, graph: false, filterWarning: false,
+      details: false, detailsOpenByDefault: false
     }, "only the power toggle and speed survive")
   })
 })
@@ -478,5 +480,128 @@ describe("settings", () => {
     const notice = View.connectionStatus({ ...base, notice: "Saved.", lastError: "x" })
     assert.equal(notice.text, "Saved.", "a fresh notice outranks a stale error")
     assert.equal(notice.error, false)
+  })
+})
+
+describe("controls beyond the basics", () => {
+  test("each optional control follows its own entity", () => {
+    assert.equal(View.sections(model()).sleepTimer, false)
+    assert.equal(View.sections(model({ sleepTimerEntity: "number.d_sleep_timer" })).sleepTimer, true)
+    assert.equal(View.sections(model()).monitoring, false)
+    assert.equal(View.sections(model({ monitorSwitch: "switch.d_cm" })).monitoring, true)
+    assert.equal(View.sections(model({ directionSupported: true })).direction, true)
+    assert.equal(View.sections(model({ directionSupported: false })).direction, false)
+  })
+
+  test("a select with one option is not a choice worth a row", () => {
+    assert.equal(View.sections(model({ heatingModeOptions: ["Heating"] })).heatingMode, false)
+    assert.equal(View.sections(model({ heatingModeOptions: ["Off", "Heating"] })).heatingMode, true)
+    assert.equal(View.sections(model({ waterHardnessOptions: ["Soft"] })).waterHardness, false)
+    assert.equal(
+      View.sections(model({ waterHardnessOptions: ["Soft", "Medium", "Hard"] })).waterHardness, true)
+  })
+
+  test("aiming needs the head moving, not an entity", () => {
+    // The service works on every model, including ones with no angle entities,
+    // so this control is deliberately not gated on discovery finding one.
+    assert.equal(View.sections(model({ oscillating: true })).aiming, true)
+    assert.equal(View.sections(model({ oscillating: false })).aiming, false)
+    assert.equal(View.sections(model({ oscillating: true, fanEntity: "" })).aiming, false)
+  })
+
+  test("sleep timer minutes read as a duration", () => {
+    assert.equal(View.sleepTimerLabel(0), "Off", "0m would read as about to fire")
+    assert.equal(View.sleepTimerLabel(15), "15m")
+    assert.equal(View.sleepTimerLabel(59), "59m")
+    assert.equal(View.sleepTimerLabel(60), "1h")
+    assert.equal(View.sleepTimerLabel(90), "1h 30m")
+    assert.equal(View.sleepTimerLabel(540), "9h")
+    assert.equal(View.sleepTimerLabel(-5), "Off")
+    assert.equal(View.sleepTimerLabel(""), "", "a blank is not zero minutes")
+    assert.equal(View.sleepTimerLabel(null), "")
+    assert.equal(View.sleepTimerLabel("x"), "")
+  })
+
+  test("the sweep range is described as an arc, not a compass bearing", () => {
+    // Angles are absolute to the machine's own zero, so naming a direction in
+    // the room would be a guess about which way the unit is facing.
+    assert.equal(View.angleLabel(0, 350, 0, 350), "Full sweep")
+    assert.equal(View.angleLabel(0, 115, 0, 350), "0° – 115°  (115° arc)")
+    assert.equal(View.angleLabel(180, 180, 0, 350), "Held at 180°", "point aim")
+    assert.equal(View.angleLabel("", 350, 0, 350), "")
+    assert.equal(View.angleLabel(0, null, 0, 350), "")
+  })
+})
+
+describe("details", () => {
+  const rich = () => model({
+    aqiCategory: "Good", dominantPollutant: "PM2.5", outdoorAqi: "23",
+    hepaFilter: "80", hepaFilterType: "Combination", carbonFilter: "60",
+    carbonFilterType: "Carbon", connectionStatus: "Cloud", wifiSignal: "-34",
+    scheduledEvents: "0 active",
+    faults: [{ label: "Motor", active: false }, { label: "System", active: false }]
+  })
+
+  test("a device that reports everything", () => {
+    const rows = View.details(rich())
+    assert.deepEqual(rows.map(r => r.label),
+      ["Air quality", "Outdoor AQI", "HEPA filter", "Carbon filter", "Connection",
+       "Schedule", "Faults"])
+    assert.equal(rows[0].value, "Good · PM2.5 leading")
+    assert.equal(rows[2].value, "80% · Combination")
+    assert.equal(rows[4].value, "Cloud · -34 dBm")
+    assert.equal(rows[6].value, "None reported")
+    assert.equal(rows.some(r => r.alarm), false, "a healthy device raises nothing")
+  })
+
+  test("a device that reports almost nothing shows a short list, not dashes", () => {
+    assert.deepEqual(View.details(model()), [])
+  })
+
+  test("half a fact still reads", () => {
+    // A cartridge that is not fitted reports a type and no life, and a device
+    // can report signal strength without a connection label.
+    assert.equal(View.details(model({ hepaFilterType: "Not Installed" }))[0].value,
+      "Not Installed")
+    assert.equal(View.details(model({ hepaFilter: "0" }))[0].value, "0%",
+      "zero percent is a reading, not a blank")
+    assert.equal(View.details(model({ wifiSignal: "-40" }))[0].value, "-40 dBm")
+    assert.equal(View.details(model({ connectionStatus: "Local" }))[0].value, "Local")
+    assert.equal(View.details(model({ aqiCategory: "Fair" }))[0].value, "Fair",
+      "a category with no dominant pollutant stands alone")
+    assert.equal(View.filterLine("", ""), "")
+  })
+
+  test("faults are named when active and counted for the header", () => {
+    const faults = [{ label: "Motor", active: true }, { label: "Wifi", active: false },
+                    { label: "System", active: true }]
+    const row = View.details(model({ faults })).find(r => r.label === "Faults")
+    assert.equal(row.value, "Motor, System")
+    assert.equal(row.alarm, true)
+    assert.equal(View.activeFaultCount(model({ faults })), 2)
+    assert.equal(View.activeFaultCount(model()), 0)
+    assert.equal(View.activeFaultCount({}), 0)
+  })
+
+  test("a due filter is the one detail drawn as urgent", () => {
+    const rows = View.details(model({ hepaFilter: "0", filterDue: true }))
+    assert.equal(rows[0].alarm, true)
+  })
+
+  test("the section exists only when it has something in it", () => {
+    assert.equal(View.sections(model()).details, false)
+    assert.equal(View.sections(rich()).details, true)
+  })
+
+  test("details unfold on their own only when something is wrong", () => {
+    assert.equal(View.sections(rich()).detailsOpenByDefault, false,
+      "a healthy device does not open a panel section at the reader")
+    assert.equal(View.sections(model({ filterDue: true })).detailsOpenByDefault, true)
+    assert.equal(
+      View.sections(model({ faults: [{ label: "Motor", active: true }] })).detailsOpenByDefault,
+      true)
+    assert.equal(
+      View.sections(model({ faults: [{ label: "Motor", active: false }] })).detailsOpenByDefault,
+      false)
   })
 })
