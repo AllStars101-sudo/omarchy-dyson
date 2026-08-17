@@ -208,6 +208,28 @@ describe("which rows exist", () => {
     assert.equal(View.sections(model({ autoSupported: false })).autoMode, false)
   })
 
+  test("airflow needs two modes to be a choice", () => {
+    assert.equal(View.sections(model()).airflow, false, "no fan_modes, no row")
+    assert.equal(View.sections(model({ fanModes: ["focus"] })).airflow, false,
+      "one mode is not a choice")
+    assert.equal(View.sections(model({ fanModes: ["focus", "diffuse"] })).airflow, true)
+  })
+
+  test("airflow modes get the names Dyson uses, not Home Assistant's", () => {
+    assert.deepEqual(View.airflowOptions(["focus", "diffuse"]), [
+      { value: "focus", label: "Focused" }, { value: "diffuse", label: "Diffused" }
+    ])
+    // The value posted back to climate.set_fan_mode stays Home Assistant's.
+    assert.deepEqual(View.airflowOptions(["focus"]).map(o => o.value), ["focus"])
+    // A mode this plugin has never seen is titled rather than dropped.
+    assert.deepEqual(View.airflowOptions(["breeze"]), [{ value: "breeze", label: "Breeze" }])
+    assert.deepEqual(View.airflowOptions([null, "", 3, undefined, "focus"]),
+      [{ value: "focus", label: "Focused" }])
+    assert.deepEqual(View.airflowOptions([]), [])
+    assert.deepEqual(View.airflowOptions(null), [])
+    assert.deepEqual(View.airflowOptions(undefined), [])
+  })
+
   test("width follows the oscillation toggle, tilt does not", () => {
     const width = ["45°", "350°"]
     const tilt = ["0°", "50°"]
@@ -270,7 +292,8 @@ describe("which rows exist", () => {
     }))
     assert.deepEqual({ ...s }, {
       deviceSwitcher: false, climate: false, powerToggle: true, targetTemp: false,
-      humidifier: false, humiditySlider: false, oscillationAngle: false, tilt: false,
+      humidifier: false, humiditySlider: false, airflow: false,
+      oscillationAngle: false, tilt: false,
       nightMode: false, autoMode: false,
       airQuality: false, graph: false, filterWarning: false
     }, "only the power toggle and speed survive")
@@ -386,10 +409,29 @@ describe("settings", () => {
     assert.equal(p[0].section, "center")
     assert.equal(p[0].index, 0)
     assert.equal(p[0].fanEntity, "fan.b")
-    assert.equal(p[0].label, "center · 1", "labels are 1-based for humans")
+    assert.equal(p[0].label, "Center")
     assert.equal(p[1].section, "right")
     assert.equal(p[1].index, 1, "the index addresses the entry, so it counts other widgets")
     assert.equal(p[1].fanEntity, "", "unpinned")
+    assert.equal(p[1].label, "Right")
+  })
+
+  test("the label never states a bar position", () => {
+    // Omarchy's Super+Ctrl+N hotkey counts only panel-capable widgets, so any
+    // label carrying `index` prints a number that disagrees with the key that
+    // actually opens the panel. Here the tray sits at index 0 and is not a
+    // panel, so the entry's own index (1) is not the hotkey's number either.
+    const p = View.placements(layout, ID)
+    assert.equal(/\d/.test(p[1].label), false, `"${p[1].label}" must carry no number`)
+
+    // Numbering appears only once it has two widgets in one section to separate.
+    const two = View.placements({ right: [{ id: ID }, { id: "omarchy.tray" }, { id: ID }] }, ID)
+    assert.deepEqual(two.map(e => e.label), ["Right", "Right #2"])
+    assert.deepEqual(two.map(e => e.index), [0, 2], "the addressing index is untouched")
+
+    // Counted per section, not across the bar.
+    const split = View.placements({ left: [{ id: ID }], right: [{ id: ID }] }, ID)
+    assert.deepEqual(split.map(e => e.label), ["Left", "Right"])
   })
 
   test("copes with a layout that uses bare string ids", () => {

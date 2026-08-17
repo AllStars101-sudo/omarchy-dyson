@@ -96,6 +96,10 @@ Panel {
   readonly property bool hasClimate: caps.climate !== "" && hvacModes.length > 0
   readonly property string hvacMode: (stateOf(caps.climate) || {}).state || "off"
   readonly property bool heating: hvacMode === "heat"
+  // Focused jet versus diffused spill. Present only on FocusMode devices, and
+  // carried on the climate entity even though it is not a heating control.
+  readonly property var fanModes: climateAttrs.fan_modes || []
+  readonly property string fanMode: climateAttrs.fan_mode || ""
   readonly property real targetTemp: Number(climateAttrs.temperature)
   readonly property real minTemp: Number(climateAttrs.min_temp || 1)
   readonly property real maxTemp: Number(climateAttrs.max_temp || 37)
@@ -219,6 +223,10 @@ Panel {
     if (!actionable) return
     service.callService("fan", "oscillate", { entity_id: fanEntity, oscillating: !oscillating })
   }
+  function setFanMode(mode) {
+    if (!actionable || !caps.climate || !mode || mode === fanMode) return
+    service.callService("climate", "set_fan_mode", { entity_id: caps.climate, fan_mode: mode })
+  }
   function setSelectOption(entityId, option) {
     if (!actionable || !entityId || !option) return
     service.callService("select", "select_option", { entity_id: entityId, option: option })
@@ -291,6 +299,7 @@ Panel {
     humidifierEntity: caps.humidifier || "", humidifying: humidifying,
     nightSwitch: caps.nightSwitch || "", autoSupported: autoSupported,
     oscillating: oscillating, angleOptions: angleOptions, tiltOptions: tiltOptions,
+    fanModes: fanModes,
     filterDue: filterDue, historyPoints: historyPoints.length,
     pm25: pm25, pm10: pm10, voc: voc, no2: no2, co2: co2, hcho: hcho,
     aqi: aqi, humidity: humidity, hepaFilter: hepaFilter
@@ -574,6 +583,27 @@ Panel {
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
             onClicked: root.toggleOscillation()
+          }
+
+          PanelSectionHeader {
+            width: parent.width
+            text: "Airflow"
+            visible: root.view.airflow
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          ButtonGroup {
+            width: parent.width
+            visible: root.view.airflow
+            enabled: root.actionable
+            opacity: root.actionable ? 1 : 0.4
+            foreground: root.bar.foreground
+            background: root.bar.background
+            fontFamily: root.bar.fontFamily
+            options: View.airflowOptions(root.fanModes)
+            value: root.fanMode
+            onChanged: function(v) { root.setFanMode(v) }
           }
 
           PanelSectionHeader {

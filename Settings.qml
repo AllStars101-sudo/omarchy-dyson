@@ -355,8 +355,11 @@ Item {
                 width: body.width
                 spacing: Style.space(10)
 
+                // Only there to tell two of this plugin's widgets apart, so a
+                // single widget gets the dropdown and no label.
                 Text {
                   width: Style.space(120)
+                  visible: root.placements.length > 1
                   anchors.verticalCenter: parent.verticalCenter
                   text: parent.modelData.label
                   color: Color.menu.text
@@ -366,7 +369,8 @@ Item {
                 }
 
                 Dropdown {
-                  width: body.width - Style.space(130)
+                  width: root.placements.length > 1
+                    ? body.width - Style.space(130) : body.width
                   showLabel: false
                   options: root.fanOptions()
                   value: parent.modelData.fanEntity

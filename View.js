@@ -98,6 +98,8 @@ function sections(m) {
     // An angle chosen while the head is still has nothing to observe, so the
     // width row follows the oscillation toggle. Tilt is a separate axis and
     // does not.
+    // A single airflow mode is not a choice, so the row needs two.
+    airflow: airflowOptions(m.fanModes).length > 1,
     oscillationAngle: selectOptions(m.angleOptions).length > 0 && !!m.oscillating,
     tilt: selectOptions(m.tiltOptions).length > 0,
     nightMode: !!m.nightSwitch,
@@ -156,6 +158,24 @@ function hvacOptions(hvacModes) {
   return out
 }
 
+// Focused jet versus diffused spill, which hass-dyson carries as the climate
+// entity's fan_mode on FocusMode-capable devices. Home Assistant's own names
+// for these are "focus" and "diffuse"; anything else a device offers is titled
+// and passed through rather than dropped.
+function airflowOptions(fanModes) {
+  var out = []
+  var modes = fanModes || []
+  for (var i = 0; i < modes.length; i++) {
+    var mode = modes[i]
+    if (typeof mode !== "string" || mode === "") continue
+    var label = mode === "focus" ? "Focused"
+      : (mode === "diffuse" ? "Diffused"
+        : mode.charAt(0).toUpperCase() + mode.slice(1))
+    out.push({ value: mode, label: label })
+  }
+  return out
+}
+
 // A Home Assistant `select` renders as a chip row. The labels are the
 // integration's own ("45°", "Breeze", "Custom") and are passed through rather
 // than rewritten: a model this plugin has never seen will list options nobody
@@ -200,14 +220,22 @@ function placements(barLayout, pluginId) {
   var order = ["left", "center", "right"]
   for (var s = 0; s < order.length; s++) {
     var list = barLayout[order[s]] || []
+    var seen = 0
     for (var i = 0; i < list.length; i++) {
       var entry = list[i]
       var id = entry && entry.id ? String(entry.id) : String(entry)
       if (id !== pluginId) continue
+      seen++
       out.push({
         section: order[s],
         index: i,
-        label: order[s] + " · " + (i + 1),
+        // Deliberately NOT the bar position. Omarchy's Super+Ctrl+N hotkey
+        // counts only panel-capable widgets, so a label carrying `index` would
+        // print a number that disagrees with the key that opens the panel.
+        // This counts this plugin's own widgets, which is all the label is for:
+        // telling two of them apart.
+        label: order[s].charAt(0).toUpperCase() + order[s].slice(1)
+          + (seen > 1 ? " #" + seen : ""),
         fanEntity: entry && entry.fanEntity ? String(entry.fanEntity) : ""
       })
     }
@@ -251,7 +279,7 @@ if (typeof module !== "undefined") module.exports = {
   statusLine: statusLine, heroSubtitle: heroSubtitle, staleMinutes: staleMinutes,
   isFiniteNumber: isFiniteNumber, sections: sections, readings: readings,
   readingText: readingText, readingColorKey: readingColorKey, hvacOptions: hvacOptions,
-  selectOptions: selectOptions,
+  selectOptions: selectOptions, airflowOptions: airflowOptions,
   deviceOptions: deviceOptions, spinDurationMs: spinDurationMs,
   placements: placements, connectionStatus: connectionStatus, settingsTab: settingsTab
 }
