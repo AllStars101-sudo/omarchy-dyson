@@ -19,7 +19,16 @@ Panel {
   moduleName: "io.github.allstars101-sudo.dyson-air"
   ipcTarget: "dyson-air"
 
-  readonly property var service: bar && bar.shell ? bar.shell.serviceFor(root.moduleName) : null
+  readonly property var hostService: bar && bar.shell ? bar.shell.serviceFor(root.moduleName) : null
+  // Replacement bars (Shibumi, etc.) are only given a service-less shell
+  // facade, so serviceFor() answers null there. Fall back to a private
+  // instance rather than rendering a dead widget; it costs one extra poll.
+  readonly property var service: hostService || localService.item
+  Loader {
+    id: localService
+    active: !!(root.bar && root.bar.shell) && !root.hostService
+    sourceComponent: Component { Service {} }
+  }
   // Named entityStates, not states: QQuickItem already defines `states`.
   readonly property var entityStates: service ? service.entityStates : []
   readonly property var config: service ? service.config : ({})
