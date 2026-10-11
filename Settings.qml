@@ -215,7 +215,7 @@ Item {
 
             PanelSectionHeader { width: parent.width; text: "Home Assistant address"; foreground: Color.menu.text }
 
-            TextField {
+            BoundedTextField {
               width: parent.width
               text: root.urlDraft
               placeholderText: "http://homeassistant.local:8123"
@@ -241,7 +241,7 @@ Item {
               foreground: Color.menu.text
             }
 
-            TextField {
+            BoundedTextField {
               width: parent.width
               text: root.tokenDraft
               password: true
