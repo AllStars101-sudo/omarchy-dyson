@@ -1,6 +1,6 @@
 {
   "name": "omarchy-dyson-air",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Dyson air treatment control for the Omarchy bar, via Home Assistant",
   "license": "MIT",
   "private": true,
@@ -9,6 +9,7 @@
     "coverage": "node --experimental-test-coverage --test-reporter=lcov --test-reporter-destination=lcov.info --test-reporter=spec --test-reporter-destination=stdout --test tests/*.test.js && node scripts/check-coverage.js lcov.info",
     "lint": "./scripts/check-qml.sh",
     "lint:strict": "./scripts/check-qml.sh --strict",
-    "check": "npm run test && npm run coverage && npm run lint"
+    "test:qml": "QT_QPA_PLATFORM=offscreen ${QMLTESTRUNNER:-/usr/lib/qt6/bin/qmltestrunner} -import tests/qml/stubs -input tests/qml",
+    "check": "npm run test && npm run coverage && npm run lint && npm run test:qml"
   }
 }
